@@ -6,7 +6,8 @@ const state = {
   concerns: [],
   providers: [],
   usage: [],
-  audit: []
+  audit: [],
+  agentActivity: []
 };
 
 const viewMeta = {
@@ -213,6 +214,88 @@ async function openConversation(id) {
   }
 
   container.scrollTop = container.scrollHeight;
+  await loadConversationActivity(id);
+}
+
+function activityStatusKind(status) {
+  if (status === "success") return "good";
+  if (status === "success_with_concerns") return "warning";
+  if (status === "running") return "warning";
+  if (status === "blocked" || status === "failed") return "danger";
+  return "muted";
+}
+
+function renderAgentActivity() {
+  const list = byId("teamActivity");
+  const runs = state.agentActivity || [];
+
+  byId("teamRunCount").textContent =
+    runs.length + " run" + (runs.length === 1 ? "" : "s");
+
+  if (!runs.length) {
+    list.innerHTML =
+      '<div class="empty-state">No agents have worked on this conversation yet.</div>';
+    return;
+  }
+
+  list.innerHTML = runs.map((run) => {
+    const output = run.output_json || {};
+    const summary = output.summary || run.error_message || "";
+    const questions = Array.isArray(output.questions) ? output.questions : [];
+
+    const questionMarkup = questions.length
+      ? '<ul class="agent-activity-questions">' +
+        questions.map((item) => {
+          const question = typeof item === "object" && item !== null
+            ? item.question
+            : item;
+          return "<li>" + escapeHtml(question || "") + "</li>";
+        }).join("") +
+        "</ul>"
+      : "";
+
+    const providerMeta = [run.provider, run.model]
+      .filter(Boolean)
+      .join(" · ");
+
+    return '<article class="agent-activity-card">' +
+      '<div class="agent-activity-topline">' +
+        "<div>" +
+          '<div class="agent-activity-name">' + escapeHtml(run.agent_id) + "</div>" +
+          '<div class="agent-activity-meta">' +
+            escapeHtml(run.trigger_type || "agent") +
+            (providerMeta ? " · " + escapeHtml(providerMeta) : "") +
+          "</div>" +
+        "</div>" +
+        statusPill(run.status || "unknown", activityStatusKind(run.status)) +
+      "</div>" +
+      (summary
+        ? '<div class="agent-activity-summary">' + escapeHtml(summary) + "</div>"
+        : "") +
+      questionMarkup +
+    "</article>";
+  }).join("");
+
+  list.scrollTop = list.scrollHeight;
+}
+
+async function loadConversationActivity(id, quiet) {
+  try {
+    const data = await api(
+      "/conversations/" + encodeURIComponent(id) + "/agent-activity"
+    );
+
+    if (state.selectedConversationId !== id) {
+      return;
+    }
+
+    state.agentActivity = data.runs || [];
+    renderAgentActivity();
+  } catch (error) {
+    if (!quiet) {
+      showNotice("Agent activity could not be loaded: " + error.message);
+    }
+  }
 }
 
 async function loadAgents() {
@@ -470,21 +553,40 @@ async function submitChat(event) {
   button.disabled = true;
   input.setAttribute("aria-busy", "true");
 
+  let poller = null;
+
   try {
-    await api("/chat", {
+    const conversationId = state.selectedConversationId;
+
+    const request = api("/chat", {
       method: "POST",
       body: JSON.stringify({
-        conversation_id: state.selectedConversationId,
-        message: message
+        conversation_id: conversationId,
+        message: message,
+        use_agents: true,
+        environment_id: "school"
       })
     });
 
+    poller = window.setInterval(() => {
+      loadConversationActivity(
+        conversationId,
+        true
+      );
+    }, 1200);
+
+    await request;
+
     input.value = "";
-    await openConversation(state.selectedConversationId);
+    await openConversation(conversationId);
     await loadConversations();
   } catch (error) {
     showNotice("Reply failed: " + error.message);
   } finally {
+    if (poller !== null) {
+      window.clearInterval(poller);
+    }
+
     button.disabled = false;
     input.removeAttribute("aria-busy");
   }
@@ -502,7 +604,11 @@ async function createConversation(dialog) {
   try {
     const result = await api("/chat", {
       method: "POST",
-      body: JSON.stringify({ message: message })
+      body: JSON.stringify({
+        message: message,
+        use_agents: true,
+        environment_id: "school"
+      })
     });
 
     input.value = "";
