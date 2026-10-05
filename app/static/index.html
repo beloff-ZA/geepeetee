@@ -107,15 +107,32 @@
                 <div><span class="ticket-id" id="conversationId"></span><h2 id="conversationTitle">Conversation</h2></div>
                 <div class="ticket-meta" id="conversationMeta"></div>
               </div>
-              <div class="messages" id="conversationMessages" aria-live="polite"></div>
-              <form class="composer" id="chatForm">
-                <label for="chatInput">Reply</label>
-                <textarea id="chatInput" rows="4" placeholder="Describe the task, issue or question..." required></textarea>
-                <div class="composer-footer">
-                  <span class="muted" id="chatRouteHint">Provider chosen by BOUND router</span>
-                  <button class="button button-primary" type="submit" id="sendButton">Send</button>
+              <div class="conversation-workspace">
+                <div class="conversation-thread">
+                  <div class="messages" id="conversationMessages" aria-live="polite"></div>
+                  <form class="composer" id="chatForm">
+                    <label for="chatInput">Reply</label>
+                    <textarea id="chatInput" rows="4" placeholder="Describe the task, issue or question..." required></textarea>
+                    <div class="composer-footer">
+                      <span class="muted" id="chatRouteHint">BOUND will assemble a specialist team for this request</span>
+                      <button class="button button-primary" type="submit" id="sendButton">Send</button>
+                    </div>
+                  </form>
                 </div>
-              </form>
+
+                <aside class="team-pane" aria-label="Agent team activity">
+                  <div class="team-pane-header">
+                    <div>
+                      <h3>Team activity</h3>
+                      <p>Individual specialist work and oversight for this conversation.</p>
+                    </div>
+                    <span class="state-pill is-muted" id="teamRunCount">0 runs</span>
+                  </div>
+                  <div class="team-activity" id="teamActivity">
+                    <div class="empty-state">No agents have worked on this conversation yet.</div>
+                  </div>
+                </aside>
+              </div>
             </div>
           </section>
         </div>
