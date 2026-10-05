@@ -590,19 +590,16 @@ def agents_list():
     }
 
 
-@app.post("/agents/{agent_id}/run")
-def agent_run(
-    agent_id: str,
-    request: AgentRunRequest,
+@app.post("/agents/panel/run")
+def agent_panel_run(
+    request: AgentPanelRequest,
 ):
     try:
-        return run_bound_agent(
-            agent_id=agent_id,
+        return run_panel(
             task=request.task,
             evidence=request.evidence,
-            trigger_type="manual_api",
-            with_oversight=
-                request.with_oversight,
+            specialist_ids=
+                request.specialist_ids,
         )
 
     except KeyError as exc:
@@ -624,16 +621,19 @@ def agent_run(
         )
 
 
-@app.post("/agents/panel/run")
-def agent_panel_run(
-    request: AgentPanelRequest,
+@app.post("/agents/{agent_id}/run")
+def agent_run(
+    agent_id: str,
+    request: AgentRunRequest,
 ):
     try:
-        return run_panel(
+        return run_bound_agent(
+            agent_id=agent_id,
             task=request.task,
             evidence=request.evidence,
-            specialist_ids=
-                request.specialist_ids,
+            trigger_type="manual_api",
+            with_oversight=
+                request.with_oversight,
         )
 
     except KeyError as exc:
