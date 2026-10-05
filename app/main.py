@@ -1,5 +1,6 @@
 import os
 import socket
+from pathlib import Path
 from datetime import datetime, timezone
 from typing import Any
 from app.db.database import fetch_all
@@ -73,11 +74,11 @@ app = FastAPI(
     version="0.1.0",
 )
 
-STATIC_DIR = "/opt/bound/app/static"
+STATIC_DIR = Path(__file__).resolve().parent / "static"
 
 app.mount(
     "/static",
-    StaticFiles(directory=STATIC_DIR),
+    StaticFiles(directory=str(STATIC_DIR)),
     name="static",
 )
 
@@ -169,7 +170,7 @@ class AgentActionProposalRequest(BaseModel):
 @app.get("/ui", include_in_schema=False)
 def operator_ui():
     return FileResponse(
-        f"{STATIC_DIR}/index.html"
+        STATIC_DIR / "index.html"
     )
 
 
