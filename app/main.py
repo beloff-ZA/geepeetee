@@ -29,6 +29,7 @@ from app.ai.usage import (
     ensure_usage_schema,
     recent_usage,
     usage_summary,
+    usage_recommendations,
 )
 from app.ai.state import (
     get_state,
@@ -444,6 +445,20 @@ def ai_usage(
         },
         "providers": usage_summary(days),
     }
+
+
+@app.get("/ai/usage/recommendations")
+def ai_usage_recommendations(
+    days: int = 30,
+):
+    days = max(
+        1,
+        min(days, 3650),
+    )
+
+    ensure_usage_schema()
+
+    return usage_recommendations(days)
 
 
 @app.get("/ai/usage/recent")
