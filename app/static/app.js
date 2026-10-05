@@ -46,7 +46,9 @@ async function api(path, options = {}) {
     const message = typeof detail === "string"
       ? detail
       : JSON.stringify(detail || data || "Request failed");
-    throw new Error(message);
+    const error = new Error(message);
+    error.status = response.status;
+    throw error;
   }
 
   return data;
@@ -293,7 +295,14 @@ async function loadConversationActivity(id, quiet) {
     renderAgentActivity();
   } catch (error) {
     if (!quiet) {
-      showNotice("Agent activity could not be loaded: " + error.message);
+      if (error.status === 404) {
+        showNotice(
+          "Agent activity endpoint is not available in the running backend. " +
+          "The UI files are newer than the loaded BOUND process. Restart BOUND after pulling."
+        );
+      } else {
+        showNotice("Agent activity could not be loaded: " + error.message);
+      }
     }
   }
 }
