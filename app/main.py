@@ -39,6 +39,20 @@ from app.ai.state import (
 from app.ai.models import available_models
 from app.ai.billing import check_billing
 
+# Agents
+from app.agents.orchestrator import run_panel
+from app.agents.runtime import (
+    list_agents as list_bound_agents,
+    open_concerns,
+    recent_runs as recent_agent_runs,
+    run_agent as run_bound_agent,
+    set_agent_enabled,
+)
+from app.agents.schema import ensure_agent_schema
+from app.agents.security import (
+    propose_action as propose_agent_action,
+)
+
 # Tools
 from app.tools.registry import (
     execute_tool,
@@ -94,6 +108,47 @@ class UsageFeedbackRequest(BaseModel):
     note: str | None = Field(
         default=None,
         max_length=2000,
+    )
+
+
+class AgentRunRequest(BaseModel):
+    task: str = Field(
+        min_length=1,
+        max_length=20000,
+    )
+    evidence: list[dict[str, Any]] = Field(
+        default_factory=list,
+    )
+    with_oversight: bool = True
+
+
+class AgentPanelRequest(BaseModel):
+    task: str = Field(
+        min_length=1,
+        max_length=20000,
+    )
+    evidence: list[dict[str, Any]] = Field(
+        default_factory=list,
+    )
+    specialist_ids: list[str] | None = None
+
+
+class AgentEnableRequest(BaseModel):
+    enabled: bool
+
+
+class AgentActionProposalRequest(BaseModel):
+    run_id: str
+    agent_id: str
+    tool_name: str
+    environment: str
+    arguments: dict[str, Any]
+    rationale: str = Field(
+        min_length=1,
+        max_length=4000,
+    )
+    evidence_refs: list[str] = Field(
+        default_factory=list,
     )
 
 
@@ -504,6 +559,193 @@ def ai_usage_feedback(
         "ok": True,
         "event_id": event_id,
     }
+
+
+# ============================================================
+# AGENTS
+# ============================================================
+
+@app.get("/agents")
+def agents_list():
+    ensure_agent_schema()
+
+    agents = list_bound_agents()
+
+    return {
+        "count": len(agents),
+        "agents": agents,
+        "execution_policy": {
+            "agent_direct_execution": False,
+            "tool_allowlists": "deny_by_default",
+            "write_actions":
+                "explicit_human_approval_required",
+            "approval_replay":
+                "blocked_single_use",
+            "sentinel_mode":
+                os.getenv(
+                    "BOUND_SENTINEL_MODE",
+                    "always",
+                ),
+        },
+    }
+
+
+@app.post("/agents/{agent_id}/run")
+def agent_run(
+    agent_id: str,
+    request: AgentRunRequest,
+):
+    try:
+        return run_bound_agent(
+            agent_id=agent_id,
+            task=request.task,
+            evidence=request.evidence,
+            trigger_type="manual_api",
+            with_oversight=
+                request.with_oversight,
+        )
+
+    except KeyError as exc:
+        raise HTTPException(
+            status_code=404,
+            detail=str(exc),
+        )
+
+    except PermissionError as exc:
+        raise HTTPException(
+            status_code=403,
+            detail=str(exc),
+        )
+
+    except Exception as exc:
+        raise HTTPException(
+            status_code=500,
+            detail=str(exc),
+        )
+
+
+@app.post("/agents/panel/run")
+def agent_panel_run(
+    request: AgentPanelRequest,
+):
+    try:
+        return run_panel(
+            task=request.task,
+            evidence=request.evidence,
+            specialist_ids=
+                request.specialist_ids,
+        )
+
+    except KeyError as exc:
+        raise HTTPException(
+            status_code=404,
+            detail=str(exc),
+        )
+
+    except PermissionError as exc:
+        raise HTTPException(
+            status_code=403,
+            detail=str(exc),
+        )
+
+    except Exception as exc:
+        raise HTTPException(
+            status_code=500,
+            detail=str(exc),
+        )
+
+
+@app.post("/agents/{agent_id}/enabled")
+def agent_enabled(
+    agent_id: str,
+    request: AgentEnableRequest,
+):
+    try:
+        set_agent_enabled(
+            agent_id,
+            request.enabled,
+        )
+
+    except KeyError as exc:
+        raise HTTPException(
+            status_code=404,
+            detail=str(exc),
+        )
+
+    return {
+        "ok": True,
+        "agent_id": agent_id,
+        "enabled": request.enabled,
+    }
+
+
+@app.get("/agents/runs/recent")
+def agent_runs_recent(
+    limit: int = 100,
+):
+    limit = max(
+        1,
+        min(limit, 1000),
+    )
+
+    runs = recent_agent_runs(limit)
+
+    return {
+        "count": len(runs),
+        "runs": runs,
+    }
+
+
+@app.get("/agents/concerns")
+def agent_concerns(
+    limit: int = 100,
+):
+    limit = max(
+        1,
+        min(limit, 1000),
+    )
+
+    concerns = open_concerns(limit)
+
+    return {
+        "count": len(concerns),
+        "concerns": concerns,
+    }
+
+
+@app.post("/agents/actions/propose")
+def agent_action_proposal(
+    request: AgentActionProposalRequest,
+):
+    try:
+        return propose_agent_action(
+            run_id=request.run_id,
+            agent_id=request.agent_id,
+            tool_name=request.tool_name,
+            environment=request.environment,
+            arguments=request.arguments,
+            rationale=request.rationale,
+            evidence_refs=
+                request.evidence_refs,
+        )
+
+    except KeyError as exc:
+        raise HTTPException(
+            status_code=404,
+            detail=str(exc),
+        )
+
+    except PermissionError as exc:
+        raise HTTPException(
+            status_code=403,
+            detail=str(exc),
+        )
+
+    except Exception as exc:
+        raise HTTPException(
+            status_code=500,
+            detail=str(exc),
+        )
 
 
 # ============================================================
