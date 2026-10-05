@@ -1,0 +1,185 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <meta name="theme-color" content="#f4f6f8">
+  <title>BOUND Operator</title>
+  <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+  <a class="skip-link" href="#workspace">Skip to workspace</a>
+
+  <div class="app-shell">
+    <aside class="sidebar" aria-label="Primary navigation">
+      <div class="brand">
+        <div class="brand-mark" aria-hidden="true">B</div>
+        <div>
+          <strong>BOUND</strong>
+          <span>Operator</span>
+        </div>
+      </div>
+
+      <nav class="nav-list">
+        <button class="nav-item is-active" data-view="overview" type="button"><span>Overview</span><span class="nav-badge" id="overviewBadge">0</span></button>
+        <button class="nav-item" data-view="conversations" type="button"><span>Conversations</span><span class="nav-badge" id="conversationBadge">0</span></button>
+        <button class="nav-item" data-view="agents" type="button"><span>Agents</span><span class="nav-badge" id="agentBadge">0</span></button>
+        <button class="nav-item" data-view="concerns" type="button"><span>Concerns</span><span class="nav-badge nav-badge-alert" id="concernBadge">0</span></button>
+        <button class="nav-item" data-view="providers" type="button"><span>Providers</span></button>
+        <button class="nav-item" data-view="activity" type="button"><span>Activity</span></button>
+      </nav>
+
+      <div class="sidebar-footer">
+        <div class="status-line">
+          <span class="status-dot" id="coreStatusDot" aria-hidden="true"></span>
+          <span id="coreStatusText">Checking core</span>
+        </div>
+        <span class="muted" id="buildMeta">BOUND Core</span>
+      </div>
+    </aside>
+
+    <main class="main" id="workspace" tabindex="-1">
+      <header class="topbar">
+        <div>
+          <h1 id="viewTitle">Overview</h1>
+          <p id="viewSubtitle">Current workload, system state and issues needing attention.</p>
+        </div>
+        <div class="topbar-actions">
+          <button class="button button-secondary" id="refreshButton" type="button">Refresh</button>
+          <button class="button button-primary" id="newConversationButton" type="button">New conversation</button>
+        </div>
+      </header>
+
+      <div class="notice is-hidden" id="globalNotice" role="status" aria-live="polite"></div>
+
+      <section class="view is-active" id="view-overview" data-view-panel="overview">
+        <div class="summary-strip" aria-label="System summary">
+          <article class="summary-item"><span class="summary-label">Core</span><strong id="summaryCore">Checking</strong><span id="summaryCoreMeta">API state</span></article>
+          <article class="summary-item"><span class="summary-label">Open concerns</span><strong id="summaryConcerns">0</strong><span>Requires review</span></article>
+          <article class="summary-item"><span class="summary-label">Agents</span><strong id="summaryAgents">0</strong><span id="summaryAgentsMeta">Registered</span></article>
+          <article class="summary-item"><span class="summary-label">Providers</span><strong id="summaryProviders">0</strong><span id="summaryProvidersMeta">Available</span></article>
+        </div>
+
+        <div class="workspace-grid">
+          <section class="panel panel-main">
+            <div class="panel-header">
+              <div><h2>Needs attention</h2><p>Evidence, security and execution concerns raised by BOUND.</p></div>
+              <button class="text-button" data-jump="concerns" type="button">View all</button>
+            </div>
+            <div class="list" id="overviewConcerns"><div class="empty-state">No concern data loaded.</div></div>
+          </section>
+
+          <section class="panel">
+            <div class="panel-header"><div><h2>Provider route</h2><p>Current fallback order and availability.</p></div></div>
+            <div class="list compact-list" id="overviewProviders"><div class="empty-state">No provider data loaded.</div></div>
+          </section>
+        </div>
+
+        <section class="panel">
+          <div class="panel-header">
+            <div><h2>Recent conversations</h2><p>Latest operator threads stored by BOUND.</p></div>
+            <button class="text-button" data-jump="conversations" type="button">Open queue</button>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Conversation</th><th>Updated</th><th>Created</th></tr></thead>
+              <tbody id="overviewConversationRows"></tbody>
+            </table>
+          </div>
+        </section>
+      </section>
+
+      <section class="view" id="view-conversations" data-view-panel="conversations">
+        <div class="split-layout">
+          <section class="queue-pane" aria-label="Conversation queue">
+            <div class="queue-header">
+              <div><h2>Conversation queue</h2><p id="conversationQueueCount">0 threads</p></div>
+              <button class="icon-button" id="queueRefreshButton" type="button" aria-label="Refresh conversations">↻</button>
+            </div>
+            <div class="queue-list" id="conversationQueue"></div>
+          </section>
+
+          <section class="ticket-pane" aria-label="Conversation detail">
+            <div class="ticket-empty" id="conversationEmpty"><h2>Select a conversation</h2><p>Open an existing thread or create a new one.</p></div>
+            <div class="ticket-detail is-hidden" id="conversationDetail">
+              <div class="ticket-header">
+                <div><span class="ticket-id" id="conversationId"></span><h2 id="conversationTitle">Conversation</h2></div>
+                <div class="ticket-meta" id="conversationMeta"></div>
+              </div>
+              <div class="messages" id="conversationMessages" aria-live="polite"></div>
+              <form class="composer" id="chatForm">
+                <label for="chatInput">Reply</label>
+                <textarea id="chatInput" rows="4" placeholder="Describe the task, issue or question..." required></textarea>
+                <div class="composer-footer">
+                  <span class="muted" id="chatRouteHint">Provider chosen by BOUND router</span>
+                  <button class="button button-primary" type="submit" id="sendButton">Send</button>
+                </div>
+              </form>
+            </div>
+          </section>
+        </div>
+      </section>
+
+      <section class="view" id="view-agents" data-view-panel="agents">
+        <div class="panel">
+          <div class="panel-header">
+            <div><h2>Agent roster</h2><p>Specialists are analytical by default. Tool execution remains policy-gated.</p></div>
+            <span class="policy-chip">Direct execution disabled</span>
+          </div>
+          <div class="agent-list" id="agentList"></div>
+        </div>
+      </section>
+
+      <section class="view" id="view-concerns" data-view-panel="concerns">
+        <div class="panel">
+          <div class="panel-header"><div><h2>Concern queue</h2><p>Open evidence, security and consistency concerns.</p></div></div>
+          <div class="concern-list" id="concernList"></div>
+        </div>
+      </section>
+
+      <section class="view" id="view-providers" data-view-panel="providers">
+        <div class="workspace-grid">
+          <section class="panel panel-main">
+            <div class="panel-header"><div><h2>Provider status</h2><p>Availability and active model configuration.</p></div></div>
+            <div class="provider-list" id="providerList"></div>
+          </section>
+          <section class="panel">
+            <div class="panel-header"><div><h2>Usage efficiency</h2><p>Observed usage and fictional shadow cost.</p></div></div>
+            <div id="usageSummary" class="metric-list"></div>
+          </section>
+        </div>
+      </section>
+
+      <section class="view" id="view-activity" data-view-panel="activity">
+        <div class="panel">
+          <div class="panel-header"><div><h2>Activity log</h2><p>Tool execution, blocks and audit events from the core.</p></div></div>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Time</th><th>Tool</th><th>Status</th><th>Risk</th><th>Environment</th><th>Target</th></tr></thead>
+              <tbody id="activityRows"></tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <dialog class="modal" id="newConversationDialog">
+    <form method="dialog" class="modal-card" id="newConversationForm">
+      <div class="modal-header">
+        <div><h2>New conversation</h2><p>Start with the issue or outcome you want BOUND to work on.</p></div>
+        <button class="icon-button" value="cancel" aria-label="Close dialog" type="submit">×</button>
+      </div>
+      <label for="newConversationInput">Request</label>
+      <textarea id="newConversationInput" rows="6" placeholder="Example: Review the current agent framework and identify the safest next implementation step." required></textarea>
+      <div class="modal-actions">
+        <button class="button button-secondary" value="cancel" type="submit">Cancel</button>
+        <button class="button button-primary" value="default" type="submit" id="createConversationButton">Create</button>
+      </div>
+    </form>
+  </dialog>
+
+  <script src="/static/app.js" defer></script>
+</body>
+</html>
