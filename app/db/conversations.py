@@ -157,6 +157,45 @@ def get_messages(
     ]
 
 
+def get_recent_messages(
+    conversation_id: str,
+    limit: int = 20,
+) -> list[dict]:
+    """
+    Return the newest messages while preserving chronological order.
+    """
+
+    rows = fetch_all(
+        """
+        SELECT *
+        FROM (
+            SELECT
+                id,
+                conversation_id,
+                role,
+                content,
+                model,
+                response_id,
+                created_at
+            FROM messages
+            WHERE conversation_id = %s
+            ORDER BY created_at DESC
+            LIMIT %s
+        ) recent
+        ORDER BY created_at ASC
+        """,
+        (
+            conversation_id,
+            limit,
+        ),
+    )
+
+    return [
+        dict(row)
+        for row in rows
+    ]
+
+
 def set_title(
     conversation_id: str,
     title: str,
