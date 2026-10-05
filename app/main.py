@@ -43,15 +43,28 @@ from app.ai.models import available_models
 from app.ai.billing import check_billing
 
 # Agents
-from app.agents.orchestrator import run_panel
+from app.agents.orchestrator import (
+    panel_answer_text,
+    run_panel,
+)
 from app.agents.runtime import (
     list_agents as list_bound_agents,
     open_concerns,
     recent_runs as recent_agent_runs,
+    conversation_runs,
     run_agent as run_bound_agent,
     set_agent_enabled,
 )
 from app.agents.schema import ensure_agent_schema
+from app.agents.environment import (
+    DEFAULT_ENVIRONMENT_ID,
+    add_environment_fact,
+    list_environment_facts,
+)
+from app.agents.knowledge import (
+    get_agent_knowledge,
+    handover_knowledge,
+)
 from app.agents.security import (
     propose_action as propose_agent_action,
 )
@@ -94,6 +107,8 @@ class ChatRequest(BaseModel):
     )
 
     conversation_id: str | None = None
+    use_agents: bool = True
+    environment_id: str = DEFAULT_ENVIRONMENT_ID
 
 class ToolRequest(BaseModel):
     tool_name: str
@@ -161,6 +176,33 @@ class AgentActionProposalRequest(BaseModel):
     evidence_refs: list[str] = Field(
         default_factory=list,
     )
+
+
+class EnvironmentFactRequest(BaseModel):
+    category: str = Field(
+        min_length=1,
+        max_length=100,
+    )
+    fact: str = Field(
+        min_length=1,
+        max_length=8000,
+    )
+    source: str = Field(
+        default="operator",
+        max_length=100,
+    )
+    confidence: float = Field(
+        default=1.0,
+        ge=0.0,
+        le=1.0,
+    )
+    sensitive: bool = False
+
+
+class AgentHandoverRequest(BaseModel):
+    source_agent_id: str
+    target_agent_id: str
+    knowledge_ids: list[str]
 
 
 # ============================================================
@@ -253,17 +295,74 @@ def chat(request: ChatRequest):
             content=request.message,
         )
 
-        # Ask BOUND with bounded conversation history.
-        result = ask_bound(
-            request.message,
-            conversation_context=conversation_context,
-            conversation_id=conversation_id,
-        )
+        if request.use_agents:
+            conversation_evidence = []
 
-        assistant_text = result.get(
-            "text",
-            "",
-        )
+            for index, item in enumerate(
+                conversation_context[-10:],
+                start=1,
+            ):
+                conversation_evidence.append({
+                    "ref": f"conversation-{index}",
+                    "source": (
+                        "conversation:"
+                        + str(item.get("role"))
+                    ),
+                    "content": str(
+                        item.get("content") or ""
+                    ),
+                })
+
+            panel = run_panel(
+                task=request.message,
+                evidence=conversation_evidence,
+                conversation_id=conversation_id,
+                environment_id=request.environment_id,
+            )
+
+            assistant_text = panel_answer_text(
+                panel
+            )
+
+            operator = (
+                panel.get("operator") or {}
+            )
+
+            result = {
+                "text": assistant_text,
+                "provider":
+                    operator.get("provider"),
+                "model":
+                    operator.get("model"),
+                "response_id": None,
+                "ai_enabled": True,
+                "state": "agent_team",
+                "agent_team": {
+                    "selected_specialists":
+                        panel.get(
+                            "selected_specialists",
+                            [],
+                        ),
+                    "operator_run_id":
+                        operator.get("run_id"),
+                    "execution_performed":
+                        False,
+                },
+            }
+
+        else:
+            result = ask_bound(
+                request.message,
+                conversation_context=
+                    conversation_context,
+                conversation_id=
+                    conversation_id,
+            )
+
+            assistant_text = result.get(
+                "text",
+                "",
+            )
 
         # Store BOUND response.
         add_message(
@@ -309,6 +408,33 @@ def conversations_list(
         "count": len(conversations),
         "conversations": conversations,
     }
+
+@app.get(
+    "/conversations/{conversation_id}/agent-activity"
+)
+def conversation_agent_activity(
+    conversation_id: str,
+):
+    conversation = get_conversation(
+        conversation_id
+    )
+
+    if not conversation:
+        raise HTTPException(
+            status_code=404,
+            detail="Conversation not found",
+        )
+
+    runs = conversation_runs(
+        conversation_id
+    )
+
+    return {
+        "conversation_id": conversation_id,
+        "count": len(runs),
+        "runs": runs,
+    }
+
 
 @app.get(
     "/conversations/{conversation_id}"
@@ -577,6 +703,95 @@ def ai_usage_feedback(
     return {
         "ok": True,
         "event_id": event_id,
+    }
+
+
+# ============================================================
+# ENVIRONMENT CONTEXT / PERSISTENT AGENT KNOWLEDGE
+# ============================================================
+
+@app.get("/environments/{environment_id}/facts")
+def environment_facts(
+    environment_id: str,
+):
+    facts = list_environment_facts(
+        environment_id,
+        include_sensitive=True,
+    )
+
+    return {
+        "environment_id": environment_id,
+        "count": len(facts),
+        "facts": facts,
+    }
+
+
+@app.post("/environments/{environment_id}/facts")
+def environment_fact_add(
+    environment_id: str,
+    request: EnvironmentFactRequest,
+):
+    try:
+        fact = add_environment_fact(
+            environment_id=environment_id,
+            category=request.category,
+            fact=request.fact,
+            source=request.source,
+            confidence=request.confidence,
+            sensitive=request.sensitive,
+        )
+
+    except KeyError as exc:
+        raise HTTPException(
+            status_code=404,
+            detail=str(exc),
+        )
+
+    return {
+        "ok": True,
+        "fact": fact,
+    }
+
+
+@app.get("/agents/{agent_id}/knowledge")
+def agent_knowledge(
+    agent_id: str,
+    environment_id: str = DEFAULT_ENVIRONMENT_ID,
+):
+    notes = get_agent_knowledge(
+        agent_id=agent_id,
+        environment_id=environment_id,
+    )
+
+    return {
+        "agent_id": agent_id,
+        "environment_id": environment_id,
+        "count": len(notes),
+        "knowledge": notes,
+    }
+
+
+@app.post("/agents/handover")
+def agent_handover(
+    request: AgentHandoverRequest,
+):
+    handed_over = handover_knowledge(
+        source_agent_id=
+            request.source_agent_id,
+        target_agent_id=
+            request.target_agent_id,
+        knowledge_ids=
+            request.knowledge_ids,
+    )
+
+    return {
+        "ok": True,
+        "source_agent_id":
+            request.source_agent_id,
+        "target_agent_id":
+            request.target_agent_id,
+        "count": len(handed_over),
+        "knowledge": handed_over,
     }
 
 
