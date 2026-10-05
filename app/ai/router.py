@@ -107,6 +107,7 @@ def route_request(
     conversation_id: str | None,
     openai_model: str | None,
     allow_openai: bool = True,
+    system_prompt: str = SYSTEM_PROMPT,
 ) -> dict:
     ensure_usage_schema()
 
@@ -130,7 +131,7 @@ def route_request(
 
         estimated_input = estimate_request_tokens(
             provider=name,
-            system_prompt=SYSTEM_PROMPT,
+            system_prompt=system_prompt,
             conversation_context=conversation_context,
             message=message,
         )
@@ -140,6 +141,7 @@ def route_request(
         try:
             response = provider.generate(
                 message=message,
+                system_prompt=system_prompt,
                 conversation_context=conversation_context,
             )
 
