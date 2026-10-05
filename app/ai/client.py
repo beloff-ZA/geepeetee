@@ -15,7 +15,10 @@ from app.ai.state import (
 load_dotenv("/opt/bound/.env")
 
 
-def ask_bound(message: str) -> dict:
+def ask_bound(
+    message: str,
+    conversation_context: list[dict] | None = None,
+) -> dict:
     state = get_state()
 
     if state["state"] != AIState.ENABLED.value:
@@ -56,11 +59,21 @@ def ask_bound(message: str) -> dict:
 
     client = OpenAI(api_key=key)
 
+    input_messages: list[dict] = []
+
+    if conversation_context:
+        input_messages.extend(conversation_context)
+
+    input_messages.append({
+        "role": "user",
+        "content": message,
+    })
+
     try:
         response = client.responses.create(
             model=model,
             instructions=SYSTEM_PROMPT,
-            input=message,
+            input=input_messages,
         )
 
     except RateLimitError as exc:
