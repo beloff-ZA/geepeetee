@@ -7,6 +7,8 @@ def ensure_agent_schema() -> None:
         CREATE TABLE IF NOT EXISTS agent_runs (
             id UUID PRIMARY KEY,
             parent_run_id UUID,
+            conversation_id UUID,
+            environment_id TEXT,
             agent_id TEXT NOT NULL,
             status TEXT NOT NULL,
             trigger_type TEXT NOT NULL,
@@ -33,8 +35,29 @@ def ensure_agent_schema() -> None:
 
     execute(
         """
+        ALTER TABLE agent_runs
+        ADD COLUMN IF NOT EXISTS conversation_id UUID
+        """
+    )
+
+    execute(
+        """
+        ALTER TABLE agent_runs
+        ADD COLUMN IF NOT EXISTS environment_id TEXT
+        """
+    )
+
+    execute(
+        """
         CREATE INDEX IF NOT EXISTS idx_agent_runs_agent_started
         ON agent_runs(agent_id, started_at DESC)
+        """
+    )
+
+    execute(
+        """
+        CREATE INDEX IF NOT EXISTS idx_agent_runs_conversation
+        ON agent_runs(conversation_id, started_at ASC)
         """
     )
 
