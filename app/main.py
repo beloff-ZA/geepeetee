@@ -716,7 +716,7 @@ def environment_facts(
 ):
     facts = list_environment_facts(
         environment_id,
-        include_sensitive=True,
+        include_sensitive=False,
     )
 
     return {
