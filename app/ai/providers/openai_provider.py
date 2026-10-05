@@ -2,7 +2,6 @@ import os
 
 from openai import OpenAI, RateLimitError
 
-from app.ai.prompt import SYSTEM_PROMPT
 from app.ai.providers.base import ProviderError, ProviderResponse
 
 
@@ -20,6 +19,7 @@ class OpenAIProvider:
         self,
         *,
         message: str,
+        system_prompt: str,
         conversation_context: list[dict] | None = None,
     ) -> ProviderResponse:
         key = os.getenv("OPENAI_API_KEY")
@@ -46,9 +46,10 @@ class OpenAIProvider:
         try:
             response = client.responses.create(
                 model=self.model,
-                instructions=SYSTEM_PROMPT,
+                instructions=system_prompt,
                 input=input_messages,
             )
+
         except RateLimitError as exc:
             raise ProviderError(
                 self.name,
@@ -56,6 +57,7 @@ class OpenAIProvider:
                 retryable=True,
                 status_code=429,
             ) from exc
+
         except Exception as exc:
             raise ProviderError(
                 self.name,
@@ -63,12 +65,32 @@ class OpenAIProvider:
                 retryable=True,
             ) from exc
 
-        usage_obj = getattr(response, "usage", None)
-        input_tokens = getattr(usage_obj, "input_tokens", None)
-        output_tokens = getattr(usage_obj, "output_tokens", None)
-        total_tokens = getattr(usage_obj, "total_tokens", None)
+        usage_obj = getattr(
+            response,
+            "usage",
+            None,
+        )
+
+        input_tokens = getattr(
+            usage_obj,
+            "input_tokens",
+            None,
+        )
+
+        output_tokens = getattr(
+            usage_obj,
+            "output_tokens",
+            None,
+        )
+
+        total_tokens = getattr(
+            usage_obj,
+            "total_tokens",
+            None,
+        )
 
         cached_input_tokens = None
+
         details = getattr(
             usage_obj,
             "input_tokens_details",
@@ -86,7 +108,9 @@ class OpenAIProvider:
 
         if usage_obj is not None:
             try:
-                raw_usage = usage_obj.model_dump()
+                raw_usage = (
+                    usage_obj.model_dump()
+                )
             except Exception:
                 raw_usage = {}
 
