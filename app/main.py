@@ -22,6 +22,7 @@ import app.tools
 
 # AI
 from app.ai.client import ask_bound
+from app.ai.context import build_conversation_context
 from app.ai.state import (
     get_state,
     select_model,
@@ -145,6 +146,12 @@ def chat(request: ChatRequest):
                     detail="Conversation not found",
                 )
 
+        # Build context before storing the current message so the
+        # latest user input is not sent to the model twice.
+        conversation_context = build_conversation_context(
+            conversation_id
+        )
+
         # Store user message.
         add_message(
             conversation_id=conversation_id,
@@ -152,9 +159,10 @@ def chat(request: ChatRequest):
             content=request.message,
         )
 
-        # Ask BOUND.
+        # Ask BOUND with bounded conversation history.
         result = ask_bound(
-            request.message
+            request.message,
+            conversation_context=conversation_context,
         )
 
         assistant_text = result.get(
