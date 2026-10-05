@@ -1,33 +1,29 @@
-import os
-
-from dotenv import load_dotenv
-from openai import OpenAI, RateLimitError
-
-from app.ai.prompt import SYSTEM_PROMPT
+from app.ai.router import (
+    RouterExhausted,
+    route_request,
+)
 from app.ai.state import (
     AIState,
     get_state,
     selected_model,
-    disable_for_billing,
 )
-
-
-load_dotenv("/opt/bound/.env")
 
 
 def ask_bound(
     message: str,
     conversation_context: list[dict] | None = None,
+    conversation_id: str | None = None,
 ) -> dict:
     state = get_state()
 
-    if state["state"] != AIState.ENABLED.value:
+    if state["state"] == AIState.DISABLED_MANUAL.value:
         return {
             "response_id": None,
+            "provider": None,
             "model": state["selected_model"],
             "text": (
-                "AI inference is not currently enabled. "
-                f"Current state: {state['state']}."
+                "AI inference is manually disabled. "
+                "BOUND Core remains online."
             ),
             "ai_enabled": False,
             "state": state["state"],
@@ -35,74 +31,45 @@ def ask_bound(
 
     model = selected_model()
 
-    if not model:
-        return {
-            "response_id": None,
-            "model": None,
-            "text": (
-                "AI inference requires a model selection."
-            ),
-            "ai_enabled": False,
-            "state":
-                "billing_restored_pending_model",
-        }
-
-    key = os.getenv("OPENAI_API_KEY")
-
-    if not key:
-        return {
-            "response_id": None,
-            "model": model,
-            "text": "OpenAI API key is missing.",
-            "ai_enabled": False,
-        }
-
-    client = OpenAI(api_key=key)
-
-    input_messages: list[dict] = []
-
-    if conversation_context:
-        input_messages.extend(conversation_context)
-
-    input_messages.append({
-        "role": "user",
-        "content": message,
-    })
+    allow_openai = (
+        state["state"] == AIState.ENABLED.value
+        and bool(model)
+    )
 
     try:
-        response = client.responses.create(
-            model=model,
-            instructions=SYSTEM_PROMPT,
-            input=input_messages,
+        result = route_request(
+            message=message,
+            conversation_context=conversation_context,
+            conversation_id=conversation_id,
+            openai_model=model,
+            allow_openai=allow_openai,
         )
 
-    except RateLimitError as exc:
-        error = str(exc)
+    except RouterExhausted as exc:
+        return {
+            "response_id": None,
+            "provider": None,
+            "model": None,
+            "text": (
+                "No configured AI provider completed "
+                "the request."
+            ),
+            "ai_enabled": False,
+            "state": "providers_unavailable",
+            "provider_errors": exc.errors,
+        }
 
+    runtime_state = (
+        "enabled"
         if (
-            "insufficient_quota" in error
-            or "credit_balance_exhausted" in error
-            or "no credits remaining" in error.lower()
-        ):
-            disable_for_billing(error)
-
-            return {
-                "response_id": None,
-                "model": model,
-                "text": (
-                    "OpenAI billing is unavailable. "
-                    "BOUND disabled AI inference."
-                ),
-                "ai_enabled": False,
-                "state": "disabled_billing",
-            }
-
-        raise
+            result["provider"] == "openai"
+            and not result["fallback"]
+        )
+        else "degraded"
+    )
 
     return {
-        "response_id": response.id,
-        "model": model,
-        "text": response.output_text,
+        **result,
         "ai_enabled": True,
-        "state": "enabled",
+        "state": runtime_state,
     }
