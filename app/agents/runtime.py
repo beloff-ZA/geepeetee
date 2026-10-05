@@ -4,10 +4,19 @@ import time
 import uuid
 
 from app.agents.catalog import AGENTS, get_agent
+from app.agents.environment import (
+    DEFAULT_ENVIRONMENT_ID,
+    bootstrap_school_profile,
+    get_environment_packet,
+)
 from app.agents.evidence import (
     deterministic_concerns,
     extract_json_object,
     normalise_evidence,
+)
+from app.agents.knowledge import (
+    knowledge_packet,
+    remember_agent_note,
 )
 from app.agents.prompts import build_agent_prompt
 from app.agents.schema import ensure_agent_schema
@@ -59,6 +68,7 @@ def _record_concern(
 
 def _sync_runtime_state() -> None:
     ensure_agent_schema()
+    bootstrap_school_profile()
 
     for agent in AGENTS.values():
         execute(
@@ -202,6 +212,37 @@ def _runtime_enabled(
     )
 
 
+def _combined_evidence(
+    *,
+    agent_id: str,
+    environment_id: str | None,
+    evidence: list[dict] | None,
+) -> list[dict]:
+    combined = []
+
+    if environment_id:
+        combined.extend(
+            get_environment_packet(
+                environment_id
+            )
+        )
+
+    combined.extend(
+        knowledge_packet(
+            agent_id=agent_id,
+            environment_id=environment_id,
+        )
+    )
+
+    combined.extend(
+        evidence or []
+    )
+
+    return normalise_evidence(
+        combined
+    )
+
+
 def _build_task_message(
     *,
     task: str,
@@ -211,14 +252,18 @@ def _build_task_message(
         evidence,
         ensure_ascii=False,
         indent=2,
+        default=str,
     )
 
     return (
         "TASK\n"
         f"{task}\n\n"
-        "SUPPLIED EVIDENCE\n"
+        "CONTEXT AND EVIDENCE\n"
         f"{evidence_text}\n\n"
-        "Analyse only within the supplied task and evidence. "
+        "Environment context describes the managed environment but is not "
+        "proof of current live state. Persistent agent memory may be unverified. "
+        "Ask focused questions when missing information could materially change "
+        "the diagnosis or recommendation. Never fill those gaps by invention. "
         "Do not claim that recommendations were executed."
     )
 
@@ -230,6 +275,8 @@ def _run_single_agent(
     evidence: list[dict] | None,
     trigger_type: str,
     parent_run_id: str | None = None,
+    conversation_id: str | None = None,
+    environment_id: str | None = DEFAULT_ENVIRONMENT_ID,
 ) -> dict:
     ensure_agent_schema()
 
@@ -240,8 +287,10 @@ def _run_single_agent(
             f"Agent '{agent_id}' is disabled"
         )
 
-    cleaned_evidence = normalise_evidence(
-        evidence
+    cleaned_evidence = _combined_evidence(
+        agent_id=agent_id,
+        environment_id=environment_id,
+        evidence=evidence,
     )
 
     run_id = str(uuid.uuid4())
@@ -251,6 +300,8 @@ def _run_single_agent(
         INSERT INTO agent_runs (
             id,
             parent_run_id,
+            conversation_id,
+            environment_id,
             agent_id,
             status,
             trigger_type,
@@ -258,12 +309,15 @@ def _run_single_agent(
             evidence_json
         )
         VALUES (
-            %s, %s, %s, 'running', %s, %s, %s::jsonb
+            %s, %s, %s, %s, %s,
+            'running', %s, %s, %s::jsonb
         )
         """,
         (
             run_id,
             parent_run_id,
+            conversation_id,
+            environment_id,
             agent_id,
             trigger_type,
             task,
@@ -338,7 +392,7 @@ def _run_single_agent(
                 evidence=cleaned_evidence,
             ),
             conversation_context=None,
-            conversation_id=None,
+            conversation_id=conversation_id,
             openai_model=model,
             allow_openai=allow_openai,
             system_prompt=build_agent_prompt(
@@ -413,6 +467,21 @@ def _run_single_agent(
             """,
             (agent_id,),
         )
+
+        summary = str(
+            output.get("summary") or ""
+        ).strip()
+
+        if summary:
+            remember_agent_note(
+                agent_id=agent_id,
+                content=summary,
+                environment_id=environment_id,
+                kind="run_summary",
+                source_run_id=run_id,
+                source_agent_id=agent_id,
+                verified=False,
+            )
 
         return {
             "run_id": run_id,
@@ -519,12 +588,16 @@ def run_agent(
     evidence: list[dict] | None = None,
     trigger_type: str = "manual",
     with_oversight: bool = True,
+    conversation_id: str | None = None,
+    environment_id: str | None = DEFAULT_ENVIRONMENT_ID,
 ) -> dict:
     result = _run_single_agent(
         agent_id=agent_id,
         task=task,
         evidence=evidence,
         trigger_type=trigger_type,
+        conversation_id=conversation_id,
+        environment_id=environment_id,
     )
 
     if (
@@ -568,8 +641,8 @@ def run_agent(
         "claims, contradictions, unsafe certainty, "
         "missing evidence, weak causal reasoning and "
         "recommendations that exceed the evidence. "
-        "Do not redo the specialist's task unless needed "
-        "to explain a concern."
+        "Identify questions that should be asked before "
+        "BOUND becomes more confident."
     )
 
     sentinel = _run_single_agent(
@@ -578,6 +651,8 @@ def run_agent(
         evidence=sentinel_evidence,
         trigger_type="oversight",
         parent_run_id=result["run_id"],
+        conversation_id=conversation_id,
+        environment_id=environment_id,
     )
 
     result["sentinel"] = sentinel
@@ -615,6 +690,32 @@ def recent_runs(
         LIMIT %s
         """,
         (limit,),
+    )
+
+    return [
+        dict(row)
+        for row in rows
+    ]
+
+
+def conversation_runs(
+    conversation_id: str,
+    limit: int = 200,
+) -> list[dict]:
+    ensure_agent_schema()
+
+    rows = fetch_all(
+        """
+        SELECT *
+        FROM agent_runs
+        WHERE conversation_id = %s
+        ORDER BY started_at ASC
+        LIMIT %s
+        """,
+        (
+            conversation_id,
+            limit,
+        ),
     )
 
     return [
