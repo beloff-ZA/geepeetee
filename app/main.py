@@ -23,6 +23,13 @@ import app.tools
 # AI
 from app.ai.client import ask_bound
 from app.ai.context import build_conversation_context
+from app.ai.router import provider_status
+from app.ai.usage import (
+    add_usage_feedback,
+    ensure_usage_schema,
+    recent_usage,
+    usage_summary,
+)
 from app.ai.state import (
     get_state,
     select_model,
@@ -75,6 +82,18 @@ class ApprovalRequest(BaseModel):
 
 class ModelSelectionRequest(BaseModel):
     model: str
+
+
+class UsageFeedbackRequest(BaseModel):
+    useful: bool
+    quality_score: int = Field(
+        ge=1,
+        le=5,
+    )
+    note: str | None = Field(
+        default=None,
+        max_length=2000,
+    )
 
 
 # ============================================================
@@ -163,6 +182,7 @@ def chat(request: ChatRequest):
         result = ask_bound(
             request.message,
             conversation_context=conversation_context,
+            conversation_id=conversation_id,
         )
 
         assistant_text = result.get(
@@ -376,6 +396,98 @@ def ai_model_select(
         "ok": True,
         "state": AIState.ENABLED.value,
         "model": request.model,
+    }
+
+
+# ============================================================
+# PROVIDERS / USAGE
+# ============================================================
+
+@app.get("/ai/providers")
+def ai_providers():
+    state = get_state()
+
+    return {
+        "provider_order": [
+            item["provider"]
+            for item in provider_status(
+                openai_model=state["selected_model"]
+            )
+        ],
+        "providers": provider_status(
+            openai_model=state["selected_model"]
+        ),
+        "openai_runtime_state": state["state"],
+    }
+
+
+@app.get("/ai/usage")
+def ai_usage(
+    days: int = 30,
+):
+    days = max(
+        1,
+        min(days, 3650),
+    )
+
+    ensure_usage_schema()
+
+    return {
+        "days": days,
+        "shadow_pricing": {
+            "currency": "USD",
+            "real_billing": False,
+            "description": (
+                "BOUND comparison-only fictional pricing. "
+                "It is not vendor billing."
+            ),
+        },
+        "providers": usage_summary(days),
+    }
+
+
+@app.get("/ai/usage/recent")
+def ai_usage_recent(
+    limit: int = 100,
+):
+    limit = max(
+        1,
+        min(limit, 1000),
+    )
+
+    ensure_usage_schema()
+
+    events = recent_usage(limit)
+
+    return {
+        "count": len(events),
+        "events": events,
+    }
+
+
+@app.post("/ai/usage/{event_id}/feedback")
+def ai_usage_feedback(
+    event_id: str,
+    request: UsageFeedbackRequest,
+):
+    ensure_usage_schema()
+
+    updated = add_usage_feedback(
+        event_id=event_id,
+        useful=request.useful,
+        quality_score=request.quality_score,
+        note=request.note,
+    )
+
+    if not updated:
+        raise HTTPException(
+            status_code=404,
+            detail="Usage event not found",
+        )
+
+    return {
+        "ok": True,
+        "event_id": event_id,
     }
 
 
