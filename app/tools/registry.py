@@ -5,6 +5,7 @@ from typing import Any
 
 from app.security.policy import ToolPolicy
 from app.security.approvals import (
+    consume_approval,
     create_approval,
     validate_approval,
 )
@@ -262,12 +263,36 @@ def execute_tool(
                 args_hash=args_hash,
                 approval_id=approval_id,
                 error_message=(
-                    "Invalid or expired approval"
+                    "Invalid, expired, or consumed approval"
                 ),
             )
 
             raise ToolBlocked(
-                "Invalid or expired approval"
+                "Invalid, expired, or consumed approval"
+            )
+
+        if not consume_approval(
+            approval_id=approval_id,
+            tool_name=tool_name,
+            environment=environment,
+            target=target,
+            args_hash=args_hash,
+        ):
+            log_tool_event(
+                tool_name=tool_name,
+                environment=environment,
+                target=target,
+                risk=policy.risk.value,
+                status="blocked",
+                args_hash=args_hash,
+                approval_id=approval_id,
+                error_message=(
+                    "Approval could not be atomically consumed"
+                ),
+            )
+
+            raise ToolBlocked(
+                "Approval could not be consumed"
             )
 
     log_tool_event(
