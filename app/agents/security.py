@@ -143,12 +143,11 @@ def review_action_proposal(
     elif not tool.policy.enabled:
         reason = "Tool is disabled"
 
-    elif (
-        agent.allowed_tools
-        and tool.name not in agent.allowed_tools
-    ):
+    elif tool.name not in agent.allowed_tools:
         reason = (
-            "Tool is outside the agent allowlist"
+            "Tool is not explicitly present in the "
+            "agent allowlist. Empty allowlists permit "
+            "no tools."
         )
 
     elif (
