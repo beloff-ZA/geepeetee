@@ -5,6 +5,8 @@ from typing import Any
 from app.db.database import fetch_all
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException
+from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 from app.db.conversations import (
@@ -69,6 +71,14 @@ app = FastAPI(
     title="BOUND Operator",
     description="BOUND Core API",
     version="0.1.0",
+)
+
+STATIC_DIR = "/opt/bound/app/static"
+
+app.mount(
+    "/static",
+    StaticFiles(directory=STATIC_DIR),
+    name="static",
 )
 
 
@@ -155,6 +165,14 @@ class AgentActionProposalRequest(BaseModel):
 # ============================================================
 # CORE
 # ============================================================
+
+@app.get("/ui", include_in_schema=False)
+def operator_ui():
+    return FileResponse(
+        f"{STATIC_DIR}/index.html"
+    )
+
+
 
 @app.get("/")
 def root():
