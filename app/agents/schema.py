@@ -6,6 +6,7 @@ def ensure_agent_schema() -> None:
         """
         CREATE TABLE IF NOT EXISTS agent_runs (
             id UUID PRIMARY KEY,
+            parent_run_id UUID,
             agent_id TEXT NOT NULL,
             status TEXT NOT NULL,
             trigger_type TEXT NOT NULL,
@@ -20,6 +21,13 @@ def ensure_agent_schema() -> None:
             duration_ms INTEGER,
             error_message TEXT
         )
+        """
+    )
+
+    execute(
+        """
+        ALTER TABLE agent_runs
+        ADD COLUMN IF NOT EXISTS parent_run_id UUID
         """
     )
 
