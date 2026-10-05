@@ -1,4 +1,4 @@
-name: Python syntax
+name: Syntax checks
 
 on:
   push:
@@ -17,5 +17,12 @@ jobs:
         with:
           python-version: "3.14"
 
-      - name: Compile application
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Compile Python application
         run: python -m compileall -q app
+
+      - name: Check dashboard JavaScript syntax
+        run: node --check app/static/app.js
