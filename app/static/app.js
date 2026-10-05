@@ -327,7 +327,11 @@ function renderAgents() {
     return '<article class="agent-row">' +
       "<div>" +
         '<div class="agent-name">' + escapeHtml(agent.name) + "</div>" +
-        '<div class="agent-meta">' + escapeHtml(agent.authority) + " · " + escapeHtml(agent.mode) + "</div>" +
+        '<div class="agent-meta">' +
+          escapeHtml(agent.authority) + " · " +
+          escapeHtml(agent.mode) + " · " +
+          (agent.persistent ? "persistent" : "ephemeral") +
+        "</div>" +
       "</div>" +
       "<div>" +
         "<p>" + escapeHtml(agent.purpose) + "</p>" +
