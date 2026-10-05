@@ -1,6 +1,5 @@
 import os
 
-from app.ai.prompt import SYSTEM_PROMPT
 from app.ai.providers.base import ProviderError, ProviderResponse
 from app.ai.providers.compat import call_openai_compatible_chat
 
@@ -28,6 +27,7 @@ class GeminiProvider:
         self,
         *,
         message: str,
+        system_prompt: str,
         conversation_context: list[dict] | None = None,
     ) -> ProviderResponse:
         key = os.getenv("GEMINI_API_KEY")
@@ -56,6 +56,6 @@ class GeminiProvider:
             ),
             api_key=key,
             model=self.model,
-            system_prompt=SYSTEM_PROMPT,
+            system_prompt=system_prompt,
             messages=messages,
         )
