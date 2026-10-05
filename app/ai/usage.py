@@ -547,3 +547,184 @@ def recent_usage(
 
 def monotonic_ms() -> int:
     return int(time.monotonic() * 1000)
+
+
+def usage_recommendations(
+    days: int = 30,
+) -> dict:
+    providers = usage_summary(days)
+
+    if not providers:
+        return {
+            "recommended_order": [],
+            "providers": [],
+            "notes": [
+                "No usage data exists yet."
+            ],
+        }
+
+    max_latency = max(
+        [
+            float(item["avg_latency_ms"])
+            for item in providers
+            if item.get("avg_latency_ms") is not None
+        ]
+        or [1.0]
+    )
+
+    max_shadow_spend = max(
+        [
+            float(item["shadow_spend_usd"])
+            for item in providers
+        ]
+        or [1.0]
+    )
+
+    ranked = []
+
+    for item in providers:
+        calls = int(item.get("calls") or 0)
+        rated_calls = int(
+            item.get("rated_calls") or 0
+        )
+        success = float(
+            item.get("success_percent") or 0
+        ) / 100.0
+
+        effectiveness = item.get(
+            "effectiveness_score"
+        )
+
+        if effectiveness is None:
+            effectiveness_norm = 0.50
+            feedback_confidence = 0.0
+        else:
+            effectiveness_norm = (
+                float(effectiveness) / 100.0
+            )
+            feedback_confidence = min(
+                rated_calls / 10.0,
+                1.0,
+            )
+
+        latency = float(
+            item.get("avg_latency_ms")
+            or max_latency
+        )
+
+        latency_score = (
+            1.0
+            - min(
+                latency / max(max_latency, 1.0),
+                1.0,
+            )
+        )
+
+        spend = float(
+            item.get("shadow_spend_usd")
+            or 0
+        )
+
+        if max_shadow_spend > 0:
+            cost_score = (
+                1.0
+                - min(
+                    spend / max_shadow_spend,
+                    1.0,
+                )
+            )
+        else:
+            cost_score = 1.0
+
+        observed_value = (
+            effectiveness_norm
+            * feedback_confidence
+            + 0.50
+            * (1.0 - feedback_confidence)
+        )
+
+        routing_score = (
+            observed_value * 0.55
+            + success * 0.20
+            + latency_score * 0.10
+            + cost_score * 0.15
+        ) * 100
+
+        recommendations = []
+
+        if rated_calls < 5:
+            recommendations.append(
+                "Collect more usefulness ratings "
+                "before changing routing priority."
+            )
+
+        if success < 0.90 and calls >= 3:
+            recommendations.append(
+                "Provider reliability is below 90%; "
+                "keep a fallback behind it."
+            )
+
+        token_error = item.get(
+            "avg_token_estimate_error_percent"
+        )
+
+        if (
+            token_error is not None
+            and float(token_error) > 25
+        ):
+            recommendations.append(
+                "Token estimator error exceeds 25%; "
+                "calibrate this provider's token factor."
+            )
+
+        if (
+            effectiveness is not None
+            and float(effectiveness) < 60
+            and rated_calls >= 5
+        ):
+            recommendations.append(
+                "Observed usefulness is weak; "
+                "lower routing priority or restrict "
+                "this provider to suitable task types."
+            )
+
+        ranked.append({
+            **item,
+            "routing_score": round(
+                routing_score,
+                2,
+            ),
+            "feedback_confidence_percent":
+                round(
+                    feedback_confidence * 100,
+                    2,
+                ),
+            "recommendations":
+                recommendations,
+        })
+
+    ranked.sort(
+        key=lambda item: item["routing_score"],
+        reverse=True,
+    )
+
+    return {
+        "recommended_order": [
+            item["provider"]
+            for item in ranked
+        ],
+        "providers": ranked,
+        "notes": [
+            (
+                "Routing score uses observed usefulness, "
+                "success rate, latency and BOUND shadow "
+                "cost. It is an optimisation aid, not "
+                "vendor billing or an objective model "
+                "quality benchmark."
+            ),
+            (
+                "Unrated providers are intentionally "
+                "treated as uncertain rather than bad."
+            ),
+        ],
+    }
