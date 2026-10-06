@@ -68,6 +68,18 @@ from app.agents.knowledge import (
 from app.agents.security import (
     propose_action as propose_agent_action,
 )
+from app.agents.background import (
+    background_status,
+    enqueue_post_conversation_jobs,
+    list_background_jobs,
+    set_background_enabled,
+    start_background_worker,
+    stop_background_worker,
+)
+from app.agents.documents import (
+    get_document,
+    list_documents,
+)
 
 # Tools
 from app.tools.registry import (
@@ -94,6 +106,16 @@ app.mount(
     StaticFiles(directory=str(STATIC_DIR)),
     name="static",
 )
+
+
+@app.on_event("startup")
+def start_bound_background_worker():
+    start_background_worker()
+
+
+@app.on_event("shutdown")
+def stop_bound_background_worker():
+    stop_background_worker()
 
 
 # ============================================================
@@ -160,6 +182,10 @@ class AgentPanelRequest(BaseModel):
 
 
 class AgentEnableRequest(BaseModel):
+    enabled: bool
+
+
+class BackgroundEnableRequest(BaseModel):
     enabled: bool
 
 
@@ -374,6 +400,12 @@ def chat(request: ChatRequest):
                 "response_id"
             ),
         )
+
+        if request.use_agents:
+            enqueue_post_conversation_jobs(
+                conversation_id=conversation_id,
+                environment_id=request.environment_id,
+            )
 
         return {
             "ok": True,
@@ -792,6 +824,88 @@ def agent_handover(
             request.target_agent_id,
         "count": len(handed_over),
         "knowledge": handed_over,
+    }
+
+
+# ============================================================
+# BACKGROUND AGENT WORK / LIVING DOCUMENTATION
+# ============================================================
+
+@app.get("/agents/background/status")
+def agent_background_status():
+    return background_status()
+
+
+@app.post("/agents/background/enabled")
+def agent_background_enabled(
+    request: BackgroundEnableRequest,
+):
+    set_background_enabled(
+        request.enabled
+    )
+
+    return {
+        "ok": True,
+        **background_status(),
+    }
+
+
+@app.get("/agents/background/jobs")
+def agent_background_jobs(
+    limit: int = 100,
+):
+    limit = max(
+        1,
+        min(limit, 500),
+    )
+
+    jobs = list_background_jobs(
+        limit
+    )
+
+    return {
+        "count": len(jobs),
+        "jobs": jobs,
+    }
+
+
+@app.get("/documents")
+def documents_list(
+    environment_id: str | None = None,
+    limit: int = 100,
+):
+    limit = max(
+        1,
+        min(limit, 500),
+    )
+
+    documents = list_documents(
+        environment_id=environment_id,
+        limit=limit,
+    )
+
+    return {
+        "count": len(documents),
+        "documents": documents,
+    }
+
+
+@app.get("/documents/{document_id}")
+def document_detail(
+    document_id: str,
+):
+    document = get_document(
+        document_id
+    )
+
+    if not document:
+        raise HTTPException(
+            status_code=404,
+            detail="Document not found",
+        )
+
+    return {
+        "document": document,
     }
 
 
