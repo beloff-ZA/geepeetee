@@ -7,13 +7,17 @@ const state = {
   providers: [],
   usage: [],
   audit: [],
-  agentActivity: []
+  agentActivity: [],
+  backgroundJobs: [],
+  backgroundStatus: null,
+  documents: []
 };
 
 const viewMeta = {
   overview: ["Overview", "Current workload, system state and issues needing attention."],
   conversations: ["Conversations", "Helpdesk-style queue for operator threads and replies."],
   agents: ["Agents", "Specialist roster, authority and runtime state."],
+  background: ["Background", "Persistent agents maintaining documentation, knowledge and work quality."],
   concerns: ["Concerns", "Evidence, security and consistency issues raised by BOUND."],
   providers: ["Providers", "Model availability, routing and observed efficiency."],
   activity: ["Activity", "Audited tool activity and execution outcomes."]
@@ -358,6 +362,95 @@ function renderAgents() {
   }).join("");
 }
 
+async function loadBackground() {
+  const results = await Promise.all([
+    api("/agents/background/status"),
+    api("/agents/background/jobs?limit=100"),
+    api("/documents?environment_id=school&limit=50")
+  ]);
+
+  state.backgroundStatus = results[0] || {};
+  state.backgroundJobs = results[1].jobs || [];
+  state.documents = results[2].documents || [];
+
+  const active = state.backgroundJobs.filter((job) =>
+    ["queued", "running"].includes(job.status)
+  ).length;
+
+  byId("backgroundBadge").textContent = active;
+  renderBackground();
+}
+
+function renderBackground() {
+  const status = state.backgroundStatus || {};
+  const enabled = Boolean(status.enabled);
+  const statusEl = byId("backgroundState");
+  const toggle = byId("backgroundToggleButton");
+
+  statusEl.textContent = enabled ? "Running" : "Paused";
+  statusEl.className = "state-pill " + (enabled ? "is-good" : "is-muted");
+  toggle.textContent = enabled ? "Pause" : "Resume";
+  toggle.dataset.backgroundEnabled = enabled ? "true" : "false";
+
+  const rows = byId("backgroundJobRows");
+
+  if (!state.backgroundJobs.length) {
+    rows.innerHTML = '<tr><td colspan="5">No background jobs yet.</td></tr>';
+  } else {
+    rows.innerHTML = state.backgroundJobs.map((job) => {
+      return "<tr>" +
+        "<td>" + escapeHtml(formatDate(job.created_at)) + "</td>" +
+        "<td>" + escapeHtml(job.agent_id || "") + "</td>" +
+        "<td>" + escapeHtml(job.job_type || "") + "</td>" +
+        "<td>" + statusPill(job.status || "unknown", activityStatusKind(job.status)) + "</td>" +
+        "<td>" + escapeHtml(job.attempts || 0) + "/" + escapeHtml(job.max_attempts || 0) + "</td>" +
+      "</tr>";
+    }).join("");
+  }
+
+  const docs = byId("documentList");
+
+  if (!state.documents.length) {
+    docs.innerHTML = '<div class="empty-state">No generated documentation yet.</div>';
+  } else {
+    docs.innerHTML = state.documents.map((doc) => {
+      return '<article class="list-item">' +
+        "<div>" +
+          '<div class="list-title">' + escapeHtml(doc.title || "Untitled document") + "</div>" +
+          '<div class="list-meta">' +
+            escapeHtml(doc.category || "") + " · v" +
+            escapeHtml(doc.version || 1) + " · " +
+            escapeHtml(formatDate(doc.updated_at)) +
+          "</div>" +
+        "</div>" +
+        statusPill(doc.status || "draft", doc.status === "published" ? "good" : "muted") +
+      "</article>";
+    }).join("");
+  }
+}
+
+async function toggleBackground() {
+  const button = byId("backgroundToggleButton");
+  const enabled = button.dataset.backgroundEnabled === "true";
+
+  button.disabled = true;
+
+  try {
+    await api("/agents/background/enabled", {
+      method: "POST",
+      body: JSON.stringify({
+        enabled: !enabled
+      })
+    });
+
+    await loadBackground();
+  } catch (error) {
+    showNotice("Background worker update failed: " + error.message);
+  } finally {
+    button.disabled = false;
+  }
+}
+
 async function loadConcerns() {
   const data = await api("/agents/concerns?limit=100");
   state.concerns = data.concerns || [];
@@ -536,6 +629,7 @@ async function refreshAll() {
     loadHealth(),
     loadConversations(),
     loadAgents(),
+    loadBackground(),
     loadConcerns(),
     loadProviders(),
     loadAudit()
@@ -695,6 +789,7 @@ document.addEventListener("click", async (event) => {
 
 byId("refreshButton").addEventListener("click", refreshAll);
 byId("queueRefreshButton").addEventListener("click", loadConversations);
+byId("backgroundToggleButton").addEventListener("click", toggleBackground);
 byId("chatForm").addEventListener("submit", submitChat);
 
 const dialog = byId("newConversationDialog");
