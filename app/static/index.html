@@ -26,6 +26,7 @@
         <button class="nav-item" data-view="conversations" type="button"><span>Conversations</span><span class="nav-badge" id="conversationBadge">0</span></button>
         <button class="nav-item" data-view="agents" type="button"><span>Agents</span><span class="nav-badge" id="agentBadge">0</span></button>
         <button class="nav-item" data-view="background" type="button"><span>Background</span><span class="nav-badge" id="backgroundBadge">0</span></button>
+        <button class="nav-item" data-view="inspector" type="button"><span>Inspector</span></button>
         <button class="nav-item" data-view="concerns" type="button"><span>Concerns</span><span class="nav-badge nav-badge-alert" id="concernBadge">0</span></button>
         <button class="nav-item" data-view="providers" type="button"><span>Providers</span></button>
         <button class="nav-item" data-view="activity" type="button"><span>Activity</span></button>
@@ -188,6 +189,135 @@
             </div>
             <div class="list" id="documentList">
               <div class="empty-state">No generated documentation yet.</div>
+            </div>
+          </section>
+        </div>
+      </section>
+
+      <section class="view" id="view-inspector" data-view-panel="inspector">
+        <div class="workspace-grid">
+          <section class="panel panel-main">
+            <div class="panel-header">
+              <div>
+                <h2>Network inspector</h2>
+                <p>Preview a read-only command, confirm the exact command, then provide credentials only when execution requires them.</p>
+              </div>
+              <span class="policy-chip">Read-only · single-use approval</span>
+            </div>
+
+            <form class="inspector-form" id="inspectorForm">
+              <div class="field">
+                <label for="inspectorEnvironment">Environment</label>
+                <select id="inspectorEnvironment">
+                  <option value="mbl">School / MBL</option>
+                  <option value="home">Home</option>
+                  <option value="core">BOUND Core</option>
+                  <option value="client">Client</option>
+                </select>
+              </div>
+
+              <div class="field">
+                <label for="inspectorTransport">Transport</label>
+                <select id="inspectorTransport">
+                  <option value="ssh">SSH</option>
+                  <option value="local">Local BOUND host</option>
+                </select>
+              </div>
+
+              <div class="field">
+                <label for="inspectorTarget">Target</label>
+                <input id="inspectorTarget" type="text" value="" placeholder="192.168.140.1 or hostname" required>
+              </div>
+
+              <div class="field">
+                <label for="inspectorPort">SSH port</label>
+                <input id="inspectorPort" type="number" value="22" min="1" max="65535">
+              </div>
+
+              <div class="field">
+                <label for="inspectorProfile">Device profile</label>
+                <select id="inspectorProfile"></select>
+              </div>
+
+              <div class="field">
+                <label for="inspectorOperation">Inspection</label>
+                <select id="inspectorOperation"></select>
+              </div>
+
+              <div class="inspector-actions">
+                <button class="button button-primary" id="inspectorPreviewButton" type="submit">Preview command</button>
+              </div>
+            </form>
+
+            <div class="inspector-plan is-hidden" id="inspectorPlan">
+              <div class="panel-header compact-header">
+                <div>
+                  <h2>Command awaiting confirmation</h2>
+                  <p>BOUND will execute only this generated read-only command.</p>
+                </div>
+              </div>
+
+              <div class="terminal-card">
+                <div class="terminal-label">Command</div>
+                <code id="inspectorCommand"></code>
+              </div>
+
+              <div class="inspector-fingerprint is-hidden" id="inspectorFingerprintWrap">
+                <strong>SSH host key</strong>
+                <code id="inspectorFingerprint"></code>
+              </div>
+
+              <div class="inspector-confirm-row">
+                <button class="button button-primary" id="inspectorConfirmButton" type="button">Confirm this command</button>
+                <span class="muted">Confirmation expires and cannot be replayed.</span>
+              </div>
+            </div>
+
+            <div class="inspector-credentials is-hidden" id="inspectorCredentials">
+              <div class="panel-header compact-header">
+                <div>
+                  <h2>Credentials required</h2>
+                  <p>Credentials are submitted for this execution only and are not written to the inspection result or audit log.</p>
+                </div>
+              </div>
+
+              <div class="inspector-form">
+                <div class="field">
+                  <label for="inspectorUsername">Username</label>
+                  <input id="inspectorUsername" type="text" autocomplete="username">
+                </div>
+
+                <div class="field">
+                  <label for="inspectorPassword">Password</label>
+                  <input id="inspectorPassword" type="password" autocomplete="current-password">
+                </div>
+              </div>
+
+              <div class="inspector-confirm-row">
+                <button class="button button-primary" id="inspectorExecuteButton" type="button">Execute confirmed command</button>
+              </div>
+            </div>
+
+            <div class="inspector-output is-hidden" id="inspectorOutputWrap">
+              <div class="panel-header compact-header">
+                <div>
+                  <h2>Result</h2>
+                  <p id="inspectorResultMeta"></p>
+                </div>
+              </div>
+              <pre class="terminal-output" id="inspectorOutput"></pre>
+            </div>
+          </section>
+
+          <section class="panel">
+            <div class="panel-header">
+              <div>
+                <h2>Recent inspections</h2>
+                <p>Stored command results can be reused as evidence by BOUND.</p>
+              </div>
+            </div>
+            <div class="list compact-list" id="inspectorHistory">
+              <div class="empty-state">No inspections yet.</div>
             </div>
           </section>
         </div>
