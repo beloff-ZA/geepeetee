@@ -10,7 +10,10 @@ const state = {
   agentActivity: [],
   backgroundJobs: [],
   backgroundStatus: null,
-  documents: []
+  documents: [],
+  inspectorProfiles: {},
+  inspectorResults: [],
+  inspectorPlan: null
 };
 
 const viewMeta = {
@@ -18,6 +21,7 @@ const viewMeta = {
   conversations: ["Conversations", "Helpdesk-style queue for operator threads and replies."],
   agents: ["Agents", "Specialist roster, authority and runtime state."],
   background: ["Background", "Persistent agents maintaining documentation, knowledge and work quality."],
+  inspector: ["Inspector", "Approval-gated read-only terminal inspections for the environments BOUND manages."],
   concerns: ["Concerns", "Evidence, security and consistency issues raised by BOUND."],
   providers: ["Providers", "Model availability, routing and observed efficiency."],
   activity: ["Activity", "Audited tool activity and execution outcomes."]
@@ -451,6 +455,225 @@ async function toggleBackground() {
   }
 }
 
+async function loadInspector() {
+  const results = await Promise.all([
+    api("/inspector/profiles"),
+    api("/inspector/results?environment=mbl&limit=30")
+  ]);
+
+  state.inspectorProfiles = results[0].profiles || {};
+  state.inspectorResults = results[1].results || [];
+
+  renderInspectorProfiles();
+  renderInspectorHistory();
+}
+
+function renderInspectorProfiles() {
+  const profileSelect = byId("inspectorProfile");
+  const profiles = state.inspectorProfiles || {};
+  const keys = Object.keys(profiles);
+
+  profileSelect.innerHTML = keys.map((key) => {
+    return '<option value="' + escapeHtml(key) + '">' +
+      escapeHtml(profiles[key].label || key) +
+      "</option>";
+  }).join("");
+
+  updateInspectorOperations();
+}
+
+function updateInspectorOperations() {
+  const profileId = byId("inspectorProfile").value;
+  const profile = state.inspectorProfiles[profileId] || {};
+  const operations = profile.operations || {};
+  const operationSelect = byId("inspectorOperation");
+
+  operationSelect.innerHTML = Object.entries(operations).map(([key, item]) => {
+    return '<option value="' + escapeHtml(key) + '">' +
+      escapeHtml(item.label || key) +
+      "</option>";
+  }).join("");
+
+  const transport = byId("inspectorTransport");
+  const target = byId("inspectorTarget");
+
+  if (profile.transport === "ssh") {
+    transport.value = "ssh";
+  }
+
+  if (profile.transport === "local") {
+    transport.value = "local";
+  }
+
+  if (transport.value === "local") {
+    target.value = "localhost";
+  } else if (target.value === "localhost") {
+    target.value = "";
+  }
+}
+
+function renderInspectorHistory() {
+  const list = byId("inspectorHistory");
+
+  if (!state.inspectorResults.length) {
+    list.innerHTML = '<div class="empty-state">No inspections yet.</div>';
+    return;
+  }
+
+  list.innerHTML = state.inspectorResults.map((item) => {
+    return '<article class="list-item">' +
+      "<div>" +
+        '<div class="list-title">' +
+          escapeHtml(item.target) + " · " +
+          escapeHtml(item.operation) +
+        "</div>" +
+        '<div class="list-meta">' +
+          escapeHtml(item.profile) + " · " +
+          escapeHtml(formatDate(item.created_at)) +
+        "</div>" +
+      "</div>" +
+      statusPill(
+        Number(item.returncode || 0) === 0 ? "Success" : "Non-zero",
+        Number(item.returncode || 0) === 0 ? "good" : "warning"
+      ) +
+    "</article>";
+  }).join("");
+}
+
+function resetInspectorExecution() {
+  state.inspectorPlan = null;
+  byId("inspectorPlan").classList.add("is-hidden");
+  byId("inspectorCredentials").classList.add("is-hidden");
+  byId("inspectorOutputWrap").classList.add("is-hidden");
+  byId("inspectorPassword").value = "";
+}
+
+async function previewInspection(event) {
+  event.preventDefault();
+  clearNotice();
+  resetInspectorExecution();
+
+  const button = byId("inspectorPreviewButton");
+  button.disabled = true;
+
+  try {
+    const payload = {
+      environment: byId("inspectorEnvironment").value,
+      target: byId("inspectorTarget").value.trim(),
+      transport: byId("inspectorTransport").value,
+      profile: byId("inspectorProfile").value,
+      operation: byId("inspectorOperation").value,
+      ssh_port: Number(byId("inspectorPort").value || 22)
+    };
+
+    const plan = await api("/inspector/preview", {
+      method: "POST",
+      body: JSON.stringify(payload)
+    });
+
+    state.inspectorPlan = plan;
+
+    byId("inspectorCommand").textContent = plan.command || "";
+
+    const fingerprintWrap = byId("inspectorFingerprintWrap");
+
+    if (plan.host_key_fingerprint) {
+      byId("inspectorFingerprint").textContent = plan.host_key_fingerprint;
+      fingerprintWrap.classList.remove("is-hidden");
+    } else {
+      fingerprintWrap.classList.add("is-hidden");
+    }
+
+    byId("inspectorPlan").classList.remove("is-hidden");
+  } catch (error) {
+    showNotice("Inspection preview failed: " + error.message);
+  } finally {
+    button.disabled = false;
+  }
+}
+
+async function confirmInspection() {
+  const plan = state.inspectorPlan;
+  if (!plan) return;
+
+  const button = byId("inspectorConfirmButton");
+  button.disabled = true;
+
+  try {
+    const confirmed = await api(
+      "/inspector/plans/" + encodeURIComponent(plan.plan_id) + "/confirm",
+      { method: "POST" }
+    );
+
+    state.inspectorPlan = {
+      ...plan,
+      ...confirmed
+    };
+
+    button.textContent = "Confirmed";
+    button.disabled = true;
+
+    if (confirmed.credential_required) {
+      byId("inspectorCredentials").classList.remove("is-hidden");
+      byId("inspectorUsername").focus();
+    } else {
+      await executeInspection();
+    }
+  } catch (error) {
+    button.disabled = false;
+    showNotice("Command confirmation failed: " + error.message);
+  }
+}
+
+async function executeInspection() {
+  const plan = state.inspectorPlan;
+  if (!plan || !plan.approval_id) return;
+
+  const button = byId("inspectorExecuteButton");
+  button.disabled = true;
+
+  try {
+    const payload = {
+      approval_id: plan.approval_id,
+      ssh_port: Number(byId("inspectorPort").value || 22),
+      username: null,
+      password: null
+    };
+
+    if (plan.credential_required) {
+      payload.username = byId("inspectorUsername").value.trim();
+      payload.password = byId("inspectorPassword").value;
+    }
+
+    const result = await api(
+      "/inspector/plans/" + encodeURIComponent(plan.plan_id) + "/execute",
+      {
+        method: "POST",
+        body: JSON.stringify(payload)
+      }
+    );
+
+    byId("inspectorPassword").value = "";
+
+    const output = [
+      result.stdout || "",
+      result.stderr ? "\nSTDERR\n" + result.stderr : ""
+    ].join("");
+
+    byId("inspectorOutput").textContent = output || "(no output)";
+    byId("inspectorResultMeta").textContent =
+      result.target + " · return code " + result.returncode;
+    byId("inspectorOutputWrap").classList.remove("is-hidden");
+
+    await loadInspector();
+  } catch (error) {
+    byId("inspectorPassword").value = "";
+    showNotice("Inspection execution failed: " + error.message);
+  } finally {
+    button.disabled = false;
+  }
+}
+
 async function loadConcerns() {
   const data = await api("/agents/concerns?limit=100");
   state.concerns = data.concerns || [];
@@ -630,6 +853,7 @@ async function refreshAll() {
     loadConversations(),
     loadAgents(),
     loadBackground(),
+    loadInspector(),
     loadConcerns(),
     loadProviders(),
     loadAudit()
@@ -790,6 +1014,17 @@ document.addEventListener("click", async (event) => {
 byId("refreshButton").addEventListener("click", refreshAll);
 byId("queueRefreshButton").addEventListener("click", loadConversations);
 byId("backgroundToggleButton").addEventListener("click", toggleBackground);
+byId("inspectorForm").addEventListener("submit", previewInspection);
+byId("inspectorProfile").addEventListener("change", updateInspectorOperations);
+byId("inspectorTransport").addEventListener("change", () => {
+  if (byId("inspectorTransport").value === "local") {
+    byId("inspectorTarget").value = "localhost";
+  } else if (byId("inspectorTarget").value === "localhost") {
+    byId("inspectorTarget").value = "";
+  }
+});
+byId("inspectorConfirmButton").addEventListener("click", confirmInspection);
+byId("inspectorExecuteButton").addEventListener("click", executeInspection);
 byId("chatForm").addEventListener("submit", submitChat);
 
 const dialog = byId("newConversationDialog");
