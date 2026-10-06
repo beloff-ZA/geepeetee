@@ -80,6 +80,13 @@ from app.agents.documents import (
     get_document,
     list_documents,
 )
+from app.inspection.network_inspector import (
+    confirm_plan as confirm_inspection_plan,
+    execute_plan as execute_inspection_plan,
+    list_profiles as list_inspection_profiles,
+    preview_plan as preview_inspection_plan,
+    recent_results as recent_inspection_results,
+)
 
 # Tools
 from app.tools.registry import (
@@ -229,6 +236,39 @@ class AgentHandoverRequest(BaseModel):
     source_agent_id: str
     target_agent_id: str
     knowledge_ids: list[str]
+
+
+class InspectorPreviewRequest(BaseModel):
+    environment: str = "mbl"
+    target: str = Field(
+        min_length=1,
+        max_length=255,
+    )
+    transport: str
+    profile: str
+    operation: str
+    ssh_port: int = Field(
+        default=22,
+        ge=1,
+        le=65535,
+    )
+
+
+class InspectorExecuteRequest(BaseModel):
+    approval_id: str
+    username: str | None = Field(
+        default=None,
+        max_length=255,
+    )
+    password: str | None = Field(
+        default=None,
+        max_length=1000,
+    )
+    ssh_port: int = Field(
+        default=22,
+        ge=1,
+        le=65535,
+    )
 
 
 # ============================================================
@@ -1094,6 +1134,116 @@ def agent_action_proposal(
             status_code=500,
             detail=str(exc),
         )
+
+
+# ============================================================
+# NETWORK INSPECTOR
+# ============================================================
+
+@app.get("/inspector/profiles")
+def inspector_profiles():
+    profiles = list_inspection_profiles()
+
+    return {
+        "profiles": profiles,
+    }
+
+
+@app.post("/inspector/preview")
+def inspector_preview(
+    request: InspectorPreviewRequest,
+):
+    try:
+        return preview_inspection_plan(
+            environment=request.environment,
+            target=request.target,
+            transport=request.transport,
+            profile=request.profile,
+            operation=request.operation,
+            ssh_port=request.ssh_port,
+        )
+
+    except Exception as exc:
+        raise HTTPException(
+            status_code=400,
+            detail=str(exc),
+        )
+
+
+@app.post("/inspector/plans/{plan_id}/confirm")
+def inspector_confirm(
+    plan_id: str,
+):
+    try:
+        return confirm_inspection_plan(
+            plan_id
+        )
+
+    except KeyError as exc:
+        raise HTTPException(
+            status_code=404,
+            detail=str(exc),
+        )
+
+    except Exception as exc:
+        raise HTTPException(
+            status_code=400,
+            detail=str(exc),
+        )
+
+
+@app.post("/inspector/plans/{plan_id}/execute")
+def inspector_execute(
+    plan_id: str,
+    request: InspectorExecuteRequest,
+):
+    try:
+        return execute_inspection_plan(
+            plan_id=plan_id,
+            approval_id=request.approval_id,
+            username=request.username,
+            password=request.password,
+            ssh_port=request.ssh_port,
+        )
+
+    except KeyError as exc:
+        raise HTTPException(
+            status_code=404,
+            detail=str(exc),
+        )
+
+    except PermissionError as exc:
+        raise HTTPException(
+            status_code=403,
+            detail=str(exc),
+        )
+
+    except Exception as exc:
+        raise HTTPException(
+            status_code=400,
+            detail=str(exc),
+        )
+
+
+@app.get("/inspector/results")
+def inspector_results(
+    environment: str | None = None,
+    limit: int = 50,
+):
+    limit = max(
+        1,
+        min(limit, 200),
+    )
+
+    results = recent_inspection_results(
+        environment=environment,
+        limit=limit,
+    )
+
+    return {
+        "count": len(results),
+        "results": results,
+    }
 
 
 # ============================================================
