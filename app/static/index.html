@@ -25,6 +25,7 @@
         <button class="nav-item is-active" data-view="overview" type="button"><span>Overview</span><span class="nav-badge" id="overviewBadge">0</span></button>
         <button class="nav-item" data-view="conversations" type="button"><span>Conversations</span><span class="nav-badge" id="conversationBadge">0</span></button>
         <button class="nav-item" data-view="agents" type="button"><span>Agents</span><span class="nav-badge" id="agentBadge">0</span></button>
+        <button class="nav-item" data-view="background" type="button"><span>Background</span><span class="nav-badge" id="backgroundBadge">0</span></button>
         <button class="nav-item" data-view="concerns" type="button"><span>Concerns</span><span class="nav-badge nav-badge-alert" id="concernBadge">0</span></button>
         <button class="nav-item" data-view="providers" type="button"><span>Providers</span></button>
         <button class="nav-item" data-view="activity" type="button"><span>Activity</span></button>
@@ -145,6 +146,50 @@
             <span class="policy-chip">Direct execution disabled</span>
           </div>
           <div class="agent-list" id="agentList"></div>
+        </div>
+      </section>
+
+
+      <section class="view" id="view-background" data-view-panel="background">
+        <div class="workspace-grid">
+          <section class="panel panel-main">
+            <div class="panel-header">
+              <div>
+                <h2>Background work</h2>
+                <p>Documentation, knowledge curation and work optimisation queued after conversations.</p>
+              </div>
+              <div class="agent-controls">
+                <span class="state-pill is-muted" id="backgroundState">Checking</span>
+                <button class="button button-secondary" id="backgroundToggleButton" type="button">Pause</button>
+              </div>
+            </div>
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Created</th>
+                    <th>Agent</th>
+                    <th>Task</th>
+                    <th>Status</th>
+                    <th>Attempts</th>
+                  </tr>
+                </thead>
+                <tbody id="backgroundJobRows"></tbody>
+              </table>
+            </div>
+          </section>
+
+          <section class="panel">
+            <div class="panel-header">
+              <div>
+                <h2>Living documentation</h2>
+                <p>Internal drafts maintained from completed work. Drafts remain reviewable rather than silently becoming truth.</p>
+              </div>
+            </div>
+            <div class="list" id="documentList">
+              <div class="empty-state">No generated documentation yet.</div>
+            </div>
+          </section>
         </div>
       </section>
 
