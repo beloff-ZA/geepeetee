@@ -197,6 +197,7 @@ def route_request(
                 "fallback": fallback_index > 0,
                 "fallback_index": fallback_index,
                 "fallback_reason": fallback_reason,
+                "provider_metadata": response.metadata,
                 "usage": {
                     "estimated_input_tokens":
                         estimated_input,
