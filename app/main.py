@@ -1128,10 +1128,9 @@ def capability_evaluate(capability_id: str):
     operator = panel.get("operator") or {}
     output = operator.get("output") or {}
     summary = str(output.get("summary") or "").strip() or None
-    confidence = output.get("confidence")
+    # Confidence is not a fitness score. Preserve the panel output and leave
+    # fitness unset until BOUND has explicit capability eval criteria.
     fit_score = None
-    if isinstance(confidence, (int, float)):
-        fit_score = max(0, min(100, round(float(confidence) * 100)))
 
     evaluation = record_evaluation(
         capability_id=capability_id,
