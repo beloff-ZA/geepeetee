@@ -5,6 +5,7 @@ import subprocess
 import tempfile
 import uuid
 from pathlib import Path
+from urllib.parse import urlparse
 
 from app.db.database import execute, fetch_all, fetch_one
 
@@ -106,6 +107,64 @@ def ensure_capability_schema() -> None:
         """
     )
 
+
+
+def _validate_source(source: str) -> str:
+    """Constrain capability acquisition targets before invoking the scanner.
+
+    GitHub and raw GitHub HTTPS sources are allowed. Local paths must live under
+    BOUND's quarantine root. Other remote URLs stay disabled unless the operator
+    explicitly opts in after putting the API behind authentication.
+    """
+
+    source = source.strip()
+    parsed = urlparse(source)
+
+    if parsed.scheme in {"http", "https"}:
+        if parsed.scheme != "https":
+            raise ValueError("Remote capability sources must use HTTPS")
+
+        host = (parsed.hostname or "").lower()
+        if host in {"github.com", "raw.githubusercontent.com"}:
+            return source
+
+        allow_remote = os.getenv(
+            "BOUND_CAPABILITY_ALLOW_REMOTE_URLS",
+            "false",
+        ).strip().lower() in {"1", "true", "yes", "on"}
+
+        if not allow_remote:
+            raise ValueError(
+                "Remote capability sources are restricted to GitHub by default"
+            )
+
+        return source
+
+    if parsed.scheme:
+        raise ValueError(
+            f"Unsupported capability source scheme: {parsed.scheme}"
+        )
+
+    root = Path(
+        os.getenv(
+            "BOUND_CAPABILITY_QUARANTINE_ROOT",
+            "/var/lib/bound/capabilities/quarantine",
+        )
+    ).resolve()
+
+    candidate = Path(source).expanduser().resolve()
+
+    try:
+        candidate.relative_to(root)
+    except ValueError as exc:
+        raise ValueError(
+            f"Local capability sources must be inside {root}"
+        ) from exc
+
+    if not candidate.exists():
+        raise ValueError("Local capability source does not exist")
+
+    return str(candidate)
 
 def _scanner_binary() -> str | None:
     configured = os.getenv("BOUND_SKILLSPECTOR_BIN", "").strip()
@@ -309,6 +368,8 @@ def register_capability(
     source = source.strip()
     if not name or not source:
         raise ValueError("Capability name and source are required")
+
+    source = _validate_source(source)
 
     existing = fetch_one(
         """
