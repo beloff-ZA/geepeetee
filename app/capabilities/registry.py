@@ -617,6 +617,93 @@ def get_capability(capability_id: str) -> dict | None:
     return result
 
 
+def ensure_agent_definition_capability(agent) -> dict | None:
+    """Create and scan a quarantine manifest for a newly code-defined agent.
+
+    The existing bootstrap roster is grandfathered. Any future agent definition
+    gets a deterministic SKILL.md snapshot and SkillSpector scan before it can be
+    enabled. Scan success does not auto-approve the agent.
+    """
+
+    if agent.id in BOOTSTRAP_TRUSTED_AGENT_IDS:
+        return None
+
+    ensure_capability_schema()
+
+    existing = fetch_one(
+        """
+        SELECT id
+        FROM bound_capabilities
+        WHERE kind = 'agent'
+          AND name = %s
+        ORDER BY created_at DESC
+        LIMIT 1
+        """,
+        (agent.id,),
+    )
+
+    if existing:
+        return get_capability(str(existing["id"]))
+
+    root = Path(
+        os.getenv(
+            "BOUND_CAPABILITY_QUARANTINE_ROOT",
+            "/var/lib/bound/capabilities/quarantine",
+        )
+    ).resolve()
+
+    manifest_dir = root / "agent" / agent.id
+    manifest_dir.mkdir(parents=True, exist_ok=True)
+    manifest = manifest_dir / "SKILL.md"
+
+    allowed_tools = ", ".join(agent.allowed_tools) or "none"
+    body = (
+        "---\n"
+        f"name: {agent.id}\n"
+        f"description: {json.dumps(agent.purpose)}\n"
+        "metadata:\n"
+        "  origin: bound-agent-catalog\n"
+        "---\n\n"
+        f"# {agent.name}\n\n"
+        "## Purpose\n"
+        f"{agent.purpose}\n\n"
+        "## Persona\n"
+        f"{agent.persona}\n\n"
+        "## Mandate\n"
+        f"{agent.mandate}\n\n"
+        "## Runtime authority\n"
+        f"{agent.authority.value}\n\n"
+        "## Mode\n"
+        f"{agent.mode.value}\n\n"
+        "## Declared tools\n"
+        f"{allowed_tools}\n\n"
+        "This agent operates inside BOUND's shared agent contract. "
+        "It cannot execute tools directly and remains subject to BOUND policy, "
+        "Sentinel oversight, capability isolation and human approval gates.\n"
+    )
+
+    manifest.write_text(body, encoding="utf-8")
+
+    return register_capability(
+        name=agent.id,
+        kind="agent",
+        source=str(manifest_dir),
+        description=agent.purpose,
+        provenance="bound_agent_catalog",
+        requested_capabilities=list(agent.allowed_tools),
+        scan_now=True,
+    )
+
+
+def onboard_new_agent_definitions(agents) -> list[dict]:
+    results = []
+    for agent in agents:
+        item = ensure_agent_definition_capability(agent)
+        if item:
+            results.append(item)
+    return results
+
+
 def agent_is_trusted(agent_id: str) -> bool:
     if agent_id in BOOTSTRAP_TRUSTED_AGENT_IDS:
         return True
