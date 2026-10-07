@@ -4,6 +4,7 @@ from app.capabilities.registry import (
     ensure_capability_schema,
     get_capability,
     list_capabilities,
+    mark_installed,
     register_capability,
     rescan_capability,
 )
@@ -15,6 +16,7 @@ __all__ = [
     "ensure_capability_schema",
     "get_capability",
     "list_capabilities",
+    "mark_installed",
     "register_capability",
     "rescan_capability",
     "BOUND_CAPABILITY_CATALOG",
