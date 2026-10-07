@@ -2,6 +2,7 @@ import os
 
 from app.ai.prompt import SYSTEM_PROMPT
 from app.ai.providers import (
+    FreeLLMAPIProvider,
     GeminiProvider,
     GroqProvider,
     OpenAIProvider,
@@ -33,7 +34,7 @@ class RouterExhausted(RuntimeError):
 def _provider_order() -> list[str]:
     raw = os.getenv(
         "BOUND_PROVIDER_ORDER",
-        "openai,gemini,groq,openrouter",
+        "freellmapi,openai,gemini,groq,openrouter",
     )
 
     return [
@@ -47,6 +48,7 @@ def _build_providers(
     openai_model: str | None,
 ) -> dict:
     providers = {
+        "freellmapi": FreeLLMAPIProvider(),
         "gemini": GeminiProvider(),
         "groq": GroqProvider(),
         "openrouter": OpenRouterProvider(),
