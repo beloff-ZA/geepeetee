@@ -25,6 +25,7 @@
         <button class="nav-item is-active" data-view="overview" type="button"><span>Overview</span><span class="nav-badge" id="overviewBadge">0</span></button>
         <button class="nav-item" data-view="conversations" type="button"><span>Conversations</span><span class="nav-badge" id="conversationBadge">0</span></button>
         <button class="nav-item" data-view="agents" type="button"><span>Agents</span><span class="nav-badge" id="agentBadge">0</span></button>
+        <button class="nav-item" data-view="capabilities" type="button"><span>Capabilities</span><span class="nav-badge" id="capabilityBadge">0</span></button>
         <button class="nav-item" data-view="background" type="button"><span>Background</span><span class="nav-badge" id="backgroundBadge">0</span></button>
         <button class="nav-item" data-view="inspector" type="button"><span>Inspector</span></button>
         <button class="nav-item" data-view="concerns" type="button"><span>Concerns</span><span class="nav-badge nav-badge-alert" id="concernBadge">0</span></button>
@@ -321,6 +322,112 @@
             </div>
           </section>
         </div>
+      </section>
+
+      <section class="view" id="view-capabilities" data-view-panel="capabilities">
+        <div class="trust-strip" aria-label="Capability trust pipeline">
+          <div class="trust-step"><span>1</span><strong>Quarantine</strong><small>Nothing runs on arrival.</small></div>
+          <div class="trust-step"><span>2</span><strong>Scan</strong><small>SkillSpector static gate.</small></div>
+          <div class="trust-step"><span>3</span><strong>Evaluate</strong><small>BOUND checks fit and scope.</small></div>
+          <div class="trust-step"><span>4</span><strong>Approve</strong><small>Human decision required.</small></div>
+          <div class="trust-step"><span>5</span><strong>Install</strong><small>Trust state only, no hidden execution.</small></div>
+        </div>
+
+        <div class="workspace-grid capability-grid">
+          <section class="panel panel-main">
+            <div class="panel-header">
+              <div>
+                <h2>Capability intake</h2>
+                <p>New skills, agents, MCP packages and workflows are quarantined and scanned before they can join BOUND.</p>
+              </div>
+              <span class="state-pill is-muted" id="skillSpectorState">Checking scanner</span>
+            </div>
+
+            <form class="capability-form" id="capabilityImportForm">
+              <div class="field">
+                <label for="capabilityName">Name</label>
+                <input id="capabilityName" type="text" maxlength="200" placeholder="network-change-planner" required>
+              </div>
+              <div class="field">
+                <label for="capabilityKind">Type</label>
+                <select id="capabilityKind">
+                  <option value="skill">Skill</option>
+                  <option value="agent">Agent</option>
+                  <option value="mcp">MCP package</option>
+                  <option value="workflow">Workflow</option>
+                </select>
+              </div>
+              <div class="field capability-source-field">
+                <label for="capabilitySource">Source</label>
+                <input id="capabilitySource" type="text" maxlength="2000" placeholder="https://github.com/owner/repository" required>
+                <span class="field-help">GitHub HTTPS sources are allowed by default. Local content must be inside BOUND's quarantine directory.</span>
+              </div>
+              <div class="field capability-source-field">
+                <label for="capabilityDescription">What should it do?</label>
+                <textarea id="capabilityDescription" rows="3" maxlength="4000" placeholder="Describe the operational purpose and expected boundaries."></textarea>
+              </div>
+              <div class="field capability-source-field">
+                <label for="capabilityPermissions">Requested capabilities</label>
+                <input id="capabilityPermissions" type="text" placeholder="network_read, github_read, filesystem_read">
+                <span class="field-help">Comma-separated. This is a declaration, not permission.</span>
+              </div>
+              <div class="capability-form-actions">
+                <span class="muted">Import starts a scan. It does not install or execute the package.</span>
+                <button class="button button-primary" id="capabilityImportButton" type="submit">Quarantine and scan</button>
+              </div>
+            </form>
+          </section>
+
+          <section class="panel">
+            <div class="panel-header">
+              <div>
+                <h2>Gate status</h2>
+                <p>Scanner availability and current intake state.</p>
+              </div>
+            </div>
+            <div class="ops-metrics" id="capabilityMetrics">
+              <div class="ops-metric"><span>Quarantine</span><strong id="capabilityQuarantineCount">0</strong></div>
+              <div class="ops-metric"><span>Review</span><strong id="capabilityReviewCount">0</strong></div>
+              <div class="ops-metric"><span>Approved</span><strong id="capabilityApprovedCount">0</strong></div>
+              <div class="ops-metric"><span>Installed</span><strong id="capabilityInstalledCount">0</strong></div>
+            </div>
+            <div class="gate-note" id="capabilityGateNote">Waiting for scanner state.</div>
+          </section>
+        </div>
+
+        <section class="panel">
+          <div class="panel-header">
+            <div>
+              <h2>Quarantine and trust queue</h2>
+              <p>Security result first, operational fit second, operator approval last.</p>
+            </div>
+          </div>
+          <div class="table-wrap">
+            <table class="capability-table">
+              <thead>
+                <tr>
+                  <th>Capability</th>
+                  <th>Type</th>
+                  <th>Security</th>
+                  <th>Risk</th>
+                  <th>Trust state</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody id="capabilityRows"></tbody>
+            </table>
+          </div>
+        </section>
+
+        <section class="panel">
+          <div class="panel-header">
+            <div>
+              <h2>BOUND capability map</h2>
+              <p>The useful offspring of FreeLLMAPI and Awesome LLM Apps. Plausible ideas stay visible until evidence says they do not belong.</p>
+            </div>
+          </div>
+          <div class="capability-catalog" id="capabilityCatalog"></div>
+        </section>
       </section>
 
       <section class="view" id="view-concerns" data-view-panel="concerns">

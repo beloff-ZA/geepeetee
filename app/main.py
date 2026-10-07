@@ -47,6 +47,7 @@ from app.agents.orchestrator import (
     panel_answer_text,
     run_panel,
 )
+from app.agents.catalog import AGENTS
 from app.agents.runtime import (
     list_agents as list_bound_agents,
     open_concerns,
@@ -79,6 +80,18 @@ from app.agents.background import (
 from app.agents.documents import (
     get_document,
     list_documents,
+)
+from app.capabilities.evaluation import record_evaluation
+from app.capabilities import (
+    BOUND_CAPABILITY_CATALOG,
+    onboard_new_agent_definitions,
+    approve_capability,
+    capability_status,
+    get_capability,
+    list_capabilities,
+    mark_installed,
+    register_capability,
+    rescan_capability,
 )
 from app.inspection.network_inspector import (
     confirm_plan as confirm_inspection_plan,
@@ -117,6 +130,11 @@ app.mount(
 
 @app.on_event("startup")
 def start_bound_background_worker():
+    # New code-defined agents are quarantined and scanned before they can be
+    # enabled. Existing bootstrap agents are not re-scanned on every start.
+    onboard_new_agent_definitions(
+        AGENTS.values()
+    )
     start_background_worker()
 
 
@@ -194,6 +212,19 @@ class AgentEnableRequest(BaseModel):
 
 class BackgroundEnableRequest(BaseModel):
     enabled: bool
+
+
+class CapabilityImportRequest(BaseModel):
+    name: str = Field(min_length=1, max_length=200)
+    kind: str = Field(min_length=1, max_length=40)
+    source: str = Field(min_length=1, max_length=2000)
+    description: str | None = Field(default=None, max_length=4000)
+    provenance: str | None = Field(default=None, max_length=1000)
+    requested_capabilities: list[str] = Field(default_factory=list)
+
+
+class CapabilityApproveRequest(BaseModel):
+    approved_by: str = Field(default="operator", min_length=1, max_length=200)
 
 
 class AgentActionProposalRequest(BaseModel):
@@ -950,6 +981,230 @@ def document_detail(
 
 
 # ============================================================
+# SKILLS / AGENTS / MCP CAPABILITY TRUST GATE
+# ============================================================
+
+@app.get("/capabilities/status")
+def capabilities_status():
+    return capability_status()
+
+
+@app.get("/capabilities/catalog")
+def capabilities_catalog():
+    return {
+        "count": len(BOUND_CAPABILITY_CATALOG),
+        "items": BOUND_CAPABILITY_CATALOG,
+    }
+
+
+@app.get("/capabilities")
+def capabilities_list(
+    kind: str | None = None,
+    limit: int = 200,
+):
+    limit = max(1, min(limit, 500))
+    items = list_capabilities(
+        kind=kind,
+        limit=limit,
+    )
+    return {
+        "count": len(items),
+        "items": items,
+    }
+
+
+@app.get("/capabilities/{capability_id}")
+def capability_detail(capability_id: str):
+    item = get_capability(capability_id)
+    if not item:
+        raise HTTPException(
+            status_code=404,
+            detail="Capability not found",
+        )
+    return {"item": item}
+
+
+@app.post("/capabilities/import")
+def capability_import(
+    request: CapabilityImportRequest,
+):
+    try:
+        item = register_capability(
+            name=request.name,
+            kind=request.kind,
+            source=request.source,
+            description=request.description,
+            provenance=request.provenance,
+            requested_capabilities=request.requested_capabilities,
+            scan_now=True,
+        )
+        return {
+            "ok": True,
+            "item": item,
+            "execution_performed": False,
+        }
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=400,
+            detail=str(exc),
+        )
+    except Exception as exc:
+        raise HTTPException(
+            status_code=500,
+            detail=str(exc),
+        )
+
+
+@app.post("/capabilities/{capability_id}/rescan")
+def capability_rescan(capability_id: str):
+    try:
+        return {
+            "ok": True,
+            "item": rescan_capability(capability_id),
+        }
+    except KeyError as exc:
+        raise HTTPException(
+            status_code=404,
+            detail=str(exc),
+        )
+    except Exception as exc:
+        raise HTTPException(
+            status_code=500,
+            detail=str(exc),
+        )
+
+
+@app.post("/capabilities/{capability_id}/evaluate")
+def capability_evaluate(capability_id: str):
+    item = get_capability(capability_id)
+    if not item:
+        raise HTTPException(
+            status_code=404,
+            detail="Capability not found",
+        )
+
+    if item.get("scan_state") not in {"safe", "caution"}:
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                "Capability must complete the SkillSpector gate before "
+                "agent evaluation."
+            ),
+        )
+
+    # Do not feed untrusted source text or scanner excerpts into the model.
+    # The evaluation panel sees only declared metadata and deterministic scan facts.
+    evidence = [{
+        "ref": "capability-metadata",
+        "source": "BOUND capability registry",
+        "content": (
+            f"name={item.get('name')}; kind={item.get('kind')}; "
+            f"description={item.get('description') or ''}; "
+            f"provenance={item.get('provenance') or ''}; "
+            f"requested_capabilities={item.get('requested_capabilities') or []}; "
+            f"skillspector_state={item.get('scan_state')}; "
+            f"risk_score={item.get('risk_score')}; "
+            f"risk_severity={item.get('risk_severity')}; "
+            f"recommendation={item.get('recommendation')}; "
+            f"analysis_complete={item.get('analysis_complete')}"
+        ),
+    }]
+
+    task = (
+        "Evaluate whether this scanned capability belongs in BOUND Operator. "
+        "Assess operational value, overlap with existing agents, least-privilege "
+        "tool needs, maintenance burden, failure modes, and the safest integration "
+        "boundary. Preserve useful possibilities rather than rejecting novelty. "
+        "Recommend exclusion only when the capability is clearly outside BOUND's "
+        "IT operations, consulting, infrastructure, research, documentation, "
+        "automation or business-support mandate. Do not execute or install anything."
+    )
+
+    panel = run_panel(
+        task=task,
+        evidence=evidence,
+        specialist_ids=[
+            "security",
+            "reasoning",
+            "alternative_solutions",
+            "business_management",
+        ],
+        environment_id="core",
+    )
+
+    operator = panel.get("operator") or {}
+    output = operator.get("output") or {}
+    summary = str(output.get("summary") or "").strip() or None
+    # Confidence is not a fitness score. Preserve the panel output and leave
+    # fitness unset until BOUND has explicit capability eval criteria.
+    fit_score = None
+
+    evaluation = record_evaluation(
+        capability_id=capability_id,
+        status=operator.get("status") or "unknown",
+        evaluator_run_id=operator.get("run_id"),
+        fit_score=fit_score,
+        summary=summary,
+        result=panel,
+    )
+
+    return {
+        "ok": True,
+        "evaluation": evaluation,
+        "execution_performed": False,
+    }
+
+
+@app.post("/capabilities/{capability_id}/approve")
+def capability_approve(
+    capability_id: str,
+    request: CapabilityApproveRequest,
+):
+    try:
+        return {
+            "ok": True,
+            "item": approve_capability(
+                capability_id,
+                approved_by=request.approved_by,
+            ),
+        }
+    except KeyError as exc:
+        raise HTTPException(
+            status_code=404,
+            detail=str(exc),
+        )
+    except PermissionError as exc:
+        raise HTTPException(
+            status_code=403,
+            detail=str(exc),
+        )
+
+
+@app.post("/capabilities/{capability_id}/install")
+def capability_install(capability_id: str):
+    try:
+        return {
+            "ok": True,
+            "item": mark_installed(capability_id),
+            "execution_performed": False,
+            "note": (
+                "BOUND marks trust state only. Package acquisition and execution "
+                "remain separate operator-controlled steps."
+            ),
+        }
+    except KeyError as exc:
+        raise HTTPException(
+            status_code=404,
+            detail=str(exc),
+        )
+    except PermissionError as exc:
+        raise HTTPException(
+            status_code=403,
+            detail=str(exc),
+        )
+
+
+# ============================================================
 # AGENTS
 # ============================================================
 
@@ -1057,6 +1312,12 @@ def agent_enabled(
     except KeyError as exc:
         raise HTTPException(
             status_code=404,
+            detail=str(exc),
+        )
+
+    except PermissionError as exc:
+        raise HTTPException(
+            status_code=403,
             detail=str(exc),
         )
 

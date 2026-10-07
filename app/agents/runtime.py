@@ -21,6 +21,7 @@ from app.agents.knowledge import (
 from app.agents.prompts import build_agent_prompt
 from app.agents.schema import ensure_agent_schema
 from app.agents.types import EvidenceRequirement
+from app.capabilities.registry import agent_is_trusted
 from app.ai.router import RouterExhausted, route_request
 from app.ai.state import AIState, get_state, selected_model
 from app.db.database import execute, fetch_all, fetch_one
@@ -71,6 +72,14 @@ def _sync_runtime_state() -> None:
     bootstrap_school_profile()
 
     for agent in AGENTS.values():
+        trusted = agent_is_trusted(agent.id)
+        initial_enabled = bool(agent.enabled and trusted)
+        paused_reason = (
+            None
+            if trusted
+            else "unscanned_agent_security_gate"
+        )
+
         execute(
             """
             INSERT INTO agent_runtime_state (
@@ -78,9 +87,10 @@ def _sync_runtime_state() -> None:
                 enabled,
                 persistent,
                 mode,
-                schedule_expression
+                schedule_expression,
+                paused_reason
             )
-            VALUES (%s, %s, %s, %s, %s)
+            VALUES (%s, %s, %s, %s, %s, %s)
             ON CONFLICT (agent_id) DO UPDATE
             SET
                 persistent = EXCLUDED.persistent,
@@ -89,10 +99,11 @@ def _sync_runtime_state() -> None:
             """,
             (
                 agent.id,
-                agent.enabled,
+                initial_enabled,
                 agent.persistent,
                 agent.mode.value,
                 agent.schedule_hint,
+                paused_reason,
             ),
         )
 
@@ -123,6 +134,7 @@ def list_agents() -> list[dict]:
 
         result.append({
             "id": agent.id,
+            "trusted": agent_is_trusted(agent.id),
             "name": agent.name,
             "purpose": agent.purpose,
             "persona": agent.persona,
@@ -172,6 +184,11 @@ def set_agent_enabled(
 ) -> None:
     _sync_runtime_state()
     get_agent(agent_id)
+
+    if enabled and not agent_is_trusted(agent_id):
+        raise PermissionError(
+            f"Agent '{agent_id}' is quarantined until an approved SkillSpector capability record exists"
+        )
 
     execute(
         """
@@ -441,6 +458,7 @@ def _run_single_agent(
                 provider = %s,
                 model = %s,
                 usage_event_id = %s,
+                route_metadata = %s::jsonb,
                 finished_at = NOW(),
                 duration_ms = %s
             WHERE id = %s
@@ -451,6 +469,9 @@ def _run_single_agent(
                 routed.get("provider"),
                 routed.get("model"),
                 routed.get("usage_event_id"),
+                json.dumps(
+                    routed.get("provider_metadata") or {}
+                ),
                 duration_ms,
                 run_id,
             ),
@@ -493,6 +514,8 @@ def _run_single_agent(
                 routed.get("model"),
             "usage_event_id":
                 routed.get("usage_event_id"),
+            "provider_metadata":
+                routed.get("provider_metadata") or {},
             "output": output,
             "concerns": concerns,
         }

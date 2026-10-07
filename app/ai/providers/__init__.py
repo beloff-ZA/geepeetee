@@ -3,6 +3,7 @@ from app.ai.providers.openai_provider import OpenAIProvider
 from app.ai.providers.gemini_provider import GeminiProvider
 from app.ai.providers.groq_provider import GroqProvider
 from app.ai.providers.openrouter_provider import OpenRouterProvider
+from app.ai.providers.freellmapi_provider import FreeLLMAPIProvider
 
 __all__ = [
     "ProviderResponse",
@@ -11,4 +12,5 @@ __all__ = [
     "GeminiProvider",
     "GroqProvider",
     "OpenRouterProvider",
+    "FreeLLMAPIProvider",
 ]

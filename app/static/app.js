@@ -13,13 +13,17 @@ const state = {
   documents: [],
   inspectorProfiles: {},
   inspectorResults: [],
-  inspectorPlan: null
+  inspectorPlan: null,
+  capabilityStatus: null,
+  capabilities: [],
+  capabilityCatalog: []
 };
 
 const viewMeta = {
   overview: ["Overview", "Current workload, system state and issues needing attention."],
   conversations: ["Conversations", "Helpdesk-style queue for operator threads and replies."],
   agents: ["Agents", "Specialist roster, authority and runtime state."],
+  capabilities: ["Capabilities", "Quarantine, scan, evaluate and approve new agent capabilities."],
   background: ["Background", "Persistent agents maintaining documentation, knowledge and work quality."],
   inspector: ["Inspector", "Approval-gated read-only terminal inspections for the environments BOUND manages."],
   concerns: ["Concerns", "Evidence, security and consistency issues raised by BOUND."],
@@ -267,6 +271,15 @@ function renderAgentActivity() {
     const providerMeta = [run.provider, run.model]
       .filter(Boolean)
       .join(" · ");
+    const route = run.route_metadata || {};
+    const routeMeta = route.routed_via
+      ? '<div class="agent-activity-meta">Routed via ' +
+        escapeHtml(route.routed_via) +
+        (route.fallback_attempts
+          ? " · " + escapeHtml(route.fallback_attempts) + " fallback attempt(s)"
+          : "") +
+        "</div>"
+      : "";
 
     return '<article class="agent-activity-card">' +
       '<div class="agent-activity-topline">' +
@@ -279,6 +292,7 @@ function renderAgentActivity() {
         "</div>" +
         statusPill(run.status || "unknown", activityStatusKind(run.status)) +
       "</div>" +
+      routeMeta +
       (summary
         ? '<div class="agent-activity-summary">' + escapeHtml(summary) + "</div>"
         : "") +
@@ -340,6 +354,9 @@ function renderAgents() {
     const enabledPill = agent.enabled
       ? statusPill("Enabled", "good")
       : statusPill("Disabled", "muted");
+    const trustPill = agent.trusted
+      ? statusPill("Trusted", "good")
+      : statusPill("Quarantined", "danger");
 
     return '<article class="agent-row">' +
       "<div>" +
@@ -355,15 +372,213 @@ function renderAgents() {
         '<p class="agent-meta">' + escapeHtml(agent.persona) + "</p>" +
       "</div>" +
       '<div class="agent-controls">' +
+        trustPill +
         enabledPill +
         '<button class="button button-secondary" type="button" data-agent-toggle="' +
           escapeHtml(agent.id) +
-          '" data-agent-enabled="' + (agent.enabled ? "true" : "false") + '">' +
+          '" data-agent-enabled="' + (agent.enabled ? "true" : "false") + '"' +
+          (agent.trusted ? "" : " disabled") + ">" +
           (agent.enabled ? "Disable" : "Enable") +
         "</button>" +
       "</div>" +
     "</article>";
   }).join("");
+}
+
+async function loadCapabilities() {
+  const results = await Promise.all([
+    api("/capabilities/status"),
+    api("/capabilities?limit=200"),
+    api("/capabilities/catalog")
+  ]);
+
+  state.capabilityStatus = results[0] || {};
+  state.capabilities = results[1].items || [];
+  state.capabilityCatalog = results[2].items || [];
+
+  byId("capabilityBadge").textContent = state.capabilities.length;
+  renderCapabilities();
+  renderCapabilityCatalog();
+}
+
+function capabilityKindLabel(kind) {
+  const labels = {
+    skill: "Skill",
+    agent: "Agent",
+    mcp: "MCP",
+    workflow: "Workflow"
+  };
+  return labels[kind] || kind || "Unknown";
+}
+
+function capabilityStateKind(value) {
+  if (["approved", "installed", "safe"].includes(value)) return "good";
+  if (["review", "caution", "pending", "quarantine"].includes(value)) return "warning";
+  if (["blocked", "scanner_unavailable", "scan_failed"].includes(value)) return "danger";
+  return "muted";
+}
+
+function renderCapabilities() {
+  const scanner = state.capabilityStatus || {};
+  const scannerState = byId("skillSpectorState");
+  const available = Boolean(scanner.scanner_available);
+
+  scannerState.textContent = available ? "SkillSpector ready" : "SkillSpector unavailable";
+  scannerState.className = "state-pill " + (available ? "is-good" : "is-danger");
+
+  const counts = scanner.counts || {};
+  byId("capabilityQuarantineCount").textContent =
+    Number(counts.quarantine || 0) + Number(counts.blocked || 0);
+  byId("capabilityReviewCount").textContent = Number(counts.review || 0);
+  byId("capabilityApprovedCount").textContent = Number(counts.approved || 0);
+  byId("capabilityInstalledCount").textContent = Number(counts.installed || 0);
+
+  byId("capabilityGateNote").textContent = available
+    ? "Static scanning is mandatory. Semantic analysis is " +
+      (scanner.semantic_scan_enabled ? "enabled." : "optional and currently disabled.")
+    : "Imports remain quarantined until the external SkillSpector CLI is installed and a rescan succeeds.";
+
+  const rows = byId("capabilityRows");
+
+  if (!state.capabilities.length) {
+    rows.innerHTML = '<tr><td colspan="6">No imported capabilities. New arrivals will appear here before they are trusted.</td></tr>';
+    return;
+  }
+
+  rows.innerHTML = state.capabilities.map((item) => {
+    const risk = item.risk_score === null || item.risk_score === undefined
+      ? "Not scored"
+      : String(item.risk_score) + "/100";
+
+    let actions = '<button class="text-button" type="button" data-capability-rescan="' +
+      escapeHtml(item.id) + '">Rescan</button>';
+
+    if (["safe", "caution"].includes(item.scan_state)) {
+      actions += '<button class="text-button" type="button" data-capability-evaluate="' +
+        escapeHtml(item.id) + '">Evaluate</button>';
+    }
+
+    if (item.status === "review" && ["safe", "caution"].includes(item.scan_state)) {
+      actions += '<button class="text-button" type="button" data-capability-approve="' +
+        escapeHtml(item.id) + '">Approve</button>';
+    }
+
+    if (item.status === "approved") {
+      actions += '<button class="text-button" type="button" data-capability-install="' +
+        escapeHtml(item.id) + '">Mark installed</button>';
+    }
+
+    return "<tr>" +
+      "<td><strong>" + escapeHtml(item.name) + "</strong>" +
+        '<div class="list-meta capability-source">' + escapeHtml(item.source) + "</div></td>" +
+      "<td>" + escapeHtml(capabilityKindLabel(item.kind)) + "</td>" +
+      "<td>" + statusPill(item.scan_state || "pending", capabilityStateKind(item.scan_state)) +
+        '<div class="list-meta">' + escapeHtml(item.recommendation || "Awaiting scan") + "</div></td>" +
+      "<td><strong>" + escapeHtml(risk) + "</strong>" +
+        '<div class="list-meta">' + escapeHtml(item.risk_severity || "") + "</div></td>" +
+      "<td>" + statusPill(item.status || "quarantine", capabilityStateKind(item.status)) + "</td>" +
+      '<td><div class="capability-actions">' + actions + "</div></td>" +
+    "</tr>";
+  }).join("");
+}
+
+function renderCapabilityCatalog() {
+  const root = byId("capabilityCatalog");
+  const statuses = ["adopted", "candidate", "hold", "excluded"];
+  const labels = {
+    adopted: "In BOUND",
+    candidate: "Next candidates",
+    hold: "Retained for later",
+    excluded: "Definitely not BOUND"
+  };
+
+  root.innerHTML = statuses.map((status) => {
+    const items = state.capabilityCatalog.filter((item) => item.status === status);
+    if (!items.length) return "";
+
+    return '<section class="catalog-lane">' +
+      '<div class="catalog-lane-header"><h3>' + escapeHtml(labels[status]) + '</h3>' +
+      '<span>' + escapeHtml(items.length) + '</span></div>' +
+      '<div class="catalog-items">' +
+      items.map((item) => {
+        return '<article class="catalog-item">' +
+          '<div class="catalog-item-top"><strong>' + escapeHtml(item.name) + '</strong>' +
+          statusPill(status, capabilityStateKind(status === "excluded" ? "blocked" : status === "adopted" ? "installed" : "review")) +
+          '</div>' +
+          '<p>' + escapeHtml(item.summary) + '</p>' +
+          '<div class="list-meta">' + escapeHtml(item.source) + ' · ' + escapeHtml(item.area) + '</div>' +
+        '</article>';
+      }).join("") +
+      '</div></section>';
+  }).join("");
+}
+
+async function importCapability(event) {
+  event.preventDefault();
+  clearNotice();
+
+  const button = byId("capabilityImportButton");
+  button.disabled = true;
+
+  try {
+    const requested = byId("capabilityPermissions").value
+      .split(",")
+      .map((item) => item.trim())
+      .filter(Boolean);
+
+    await api("/capabilities/import", {
+      method: "POST",
+      body: JSON.stringify({
+        name: byId("capabilityName").value.trim(),
+        kind: byId("capabilityKind").value,
+        source: byId("capabilitySource").value.trim(),
+        description: byId("capabilityDescription").value.trim() || null,
+        provenance: "operator_import",
+        requested_capabilities: requested
+      })
+    });
+
+    event.target.reset();
+    showNotice("Capability quarantined and scanned. Review the security result before approval.");
+    await Promise.all([loadCapabilities(), loadAgents()]);
+  } catch (error) {
+    showNotice("Capability import failed: " + error.message);
+  } finally {
+    button.disabled = false;
+  }
+}
+
+async function capabilityAction(id, action, button) {
+  button.disabled = true;
+  clearNotice();
+
+  try {
+    let options = { method: "POST" };
+
+    if (action === "approve") {
+      options.body = JSON.stringify({ approved_by: "operator" });
+    }
+
+    const result = await api(
+      "/capabilities/" + encodeURIComponent(id) + "/" + action,
+      options
+    );
+
+    if (action === "evaluate") {
+      const summary = result.evaluation && result.evaluation.summary;
+      showNotice(summary
+        ? "Capability evaluation: " + summary
+        : "Capability evaluation completed. Review the recorded agent result.");
+    } else {
+      showNotice("Capability " + action.replace("_", " ") + " completed.");
+    }
+
+    await Promise.all([loadCapabilities(), loadAgents()]);
+  } catch (error) {
+    showNotice("Capability " + action + " failed: " + error.message);
+  } finally {
+    button.disabled = false;
+  }
 }
 
 async function loadBackground() {
@@ -852,6 +1067,7 @@ async function refreshAll() {
     loadHealth(),
     loadConversations(),
     loadAgents(),
+    loadCapabilities(),
     loadBackground(),
     loadInspector(),
     loadConcerns(),
@@ -1008,12 +1224,29 @@ document.addEventListener("click", async (event) => {
   const agentToggle = event.target.closest("[data-agent-toggle]");
   if (agentToggle) {
     await toggleAgent(agentToggle);
+    return;
+  }
+
+  const capabilityButtons = [
+    ["rescan", "data-capability-rescan"],
+    ["evaluate", "data-capability-evaluate"],
+    ["approve", "data-capability-approve"],
+    ["install", "data-capability-install"]
+  ];
+
+  for (const [action, attribute] of capabilityButtons) {
+    const button = event.target.closest("[" + attribute + "]");
+    if (button) {
+      await capabilityAction(button.getAttribute(attribute), action, button);
+      return;
+    }
   }
 });
 
 byId("refreshButton").addEventListener("click", refreshAll);
 byId("queueRefreshButton").addEventListener("click", loadConversations);
 byId("backgroundToggleButton").addEventListener("click", toggleBackground);
+byId("capabilityImportForm").addEventListener("submit", importCapability);
 byId("inspectorForm").addEventListener("submit", previewInspection);
 byId("inspectorProfile").addEventListener("change", updateInspectorOperations);
 byId("inspectorTransport").addEventListener("change", () => {
