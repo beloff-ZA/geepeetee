@@ -271,6 +271,15 @@ function renderAgentActivity() {
     const providerMeta = [run.provider, run.model]
       .filter(Boolean)
       .join(" · ");
+    const route = run.route_metadata || {};
+    const routeMeta = route.routed_via
+      ? '<div class="agent-activity-meta">Routed via ' +
+        escapeHtml(route.routed_via) +
+        (route.fallback_attempts
+          ? " · " + escapeHtml(route.fallback_attempts) + " fallback attempt(s)"
+          : "") +
+        "</div>"
+      : "";
 
     return '<article class="agent-activity-card">' +
       '<div class="agent-activity-topline">' +
@@ -283,6 +292,7 @@ function renderAgentActivity() {
         "</div>" +
         statusPill(run.status || "unknown", activityStatusKind(run.status)) +
       "</div>" +
+      routeMeta +
       (summary
         ? '<div class="agent-activity-summary">' + escapeHtml(summary) + "</div>"
         : "") +
