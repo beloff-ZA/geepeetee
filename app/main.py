@@ -80,6 +80,16 @@ from app.agents.documents import (
     get_document,
     list_documents,
 )
+from app.capabilities import (
+    BOUND_CAPABILITY_CATALOG,
+    approve_capability,
+    capability_status,
+    get_capability,
+    list_capabilities,
+    mark_installed,
+    register_capability,
+    rescan_capability,
+)
 from app.inspection.network_inspector import (
     confirm_plan as confirm_inspection_plan,
     execute_plan as execute_inspection_plan,
@@ -194,6 +204,19 @@ class AgentEnableRequest(BaseModel):
 
 class BackgroundEnableRequest(BaseModel):
     enabled: bool
+
+
+class CapabilityImportRequest(BaseModel):
+    name: str = Field(min_length=1, max_length=200)
+    kind: str = Field(min_length=1, max_length=40)
+    source: str = Field(min_length=1, max_length=2000)
+    description: str | None = Field(default=None, max_length=4000)
+    provenance: str | None = Field(default=None, max_length=1000)
+    requested_capabilities: list[str] = Field(default_factory=list)
+
+
+class CapabilityApproveRequest(BaseModel):
+    approved_by: str = Field(default="operator", min_length=1, max_length=200)
 
 
 class AgentActionProposalRequest(BaseModel):
@@ -947,6 +970,149 @@ def document_detail(
     return {
         "document": document,
     }
+
+
+# ============================================================
+# SKILLS / AGENTS / MCP CAPABILITY TRUST GATE
+# ============================================================
+
+@app.get("/capabilities/status")
+def capabilities_status():
+    return capability_status()
+
+
+@app.get("/capabilities/catalog")
+def capabilities_catalog():
+    return {
+        "count": len(BOUND_CAPABILITY_CATALOG),
+        "items": BOUND_CAPABILITY_CATALOG,
+    }
+
+
+@app.get("/capabilities")
+def capabilities_list(
+    kind: str | None = None,
+    limit: int = 200,
+):
+    limit = max(1, min(limit, 500))
+    items = list_capabilities(
+        kind=kind,
+        limit=limit,
+    )
+    return {
+        "count": len(items),
+        "items": items,
+    }
+
+
+@app.get("/capabilities/{capability_id}")
+def capability_detail(capability_id: str):
+    item = get_capability(capability_id)
+    if not item:
+        raise HTTPException(
+            status_code=404,
+            detail="Capability not found",
+        )
+    return {"item": item}
+
+
+@app.post("/capabilities/import")
+def capability_import(
+    request: CapabilityImportRequest,
+):
+    try:
+        item = register_capability(
+            name=request.name,
+            kind=request.kind,
+            source=request.source,
+            description=request.description,
+            provenance=request.provenance,
+            requested_capabilities=request.requested_capabilities,
+            scan_now=True,
+        )
+        return {
+            "ok": True,
+            "item": item,
+            "execution_performed": False,
+        }
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=400,
+            detail=str(exc),
+        )
+    except Exception as exc:
+        raise HTTPException(
+            status_code=500,
+            detail=str(exc),
+        )
+
+
+@app.post("/capabilities/{capability_id}/rescan")
+def capability_rescan(capability_id: str):
+    try:
+        return {
+            "ok": True,
+            "item": rescan_capability(capability_id),
+        }
+    except KeyError as exc:
+        raise HTTPException(
+            status_code=404,
+            detail=str(exc),
+        )
+    except Exception as exc:
+        raise HTTPException(
+            status_code=500,
+            detail=str(exc),
+        )
+
+
+@app.post("/capabilities/{capability_id}/approve")
+def capability_approve(
+    capability_id: str,
+    request: CapabilityApproveRequest,
+):
+    try:
+        return {
+            "ok": True,
+            "item": approve_capability(
+                capability_id,
+                approved_by=request.approved_by,
+            ),
+        }
+    except KeyError as exc:
+        raise HTTPException(
+            status_code=404,
+            detail=str(exc),
+        )
+    except PermissionError as exc:
+        raise HTTPException(
+            status_code=403,
+            detail=str(exc),
+        )
+
+
+@app.post("/capabilities/{capability_id}/install")
+def capability_install(capability_id: str):
+    try:
+        return {
+            "ok": True,
+            "item": mark_installed(capability_id),
+            "execution_performed": False,
+            "note": (
+                "BOUND marks trust state only. Package acquisition and execution "
+                "remain separate operator-controlled steps."
+            ),
+        }
+    except KeyError as exc:
+        raise HTTPException(
+            status_code=404,
+            detail=str(exc),
+        )
+    except PermissionError as exc:
+        raise HTTPException(
+            status_code=403,
+            detail=str(exc),
+        )
 
 
 # ============================================================
