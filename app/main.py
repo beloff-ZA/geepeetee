@@ -80,6 +80,7 @@ from app.agents.documents import (
     get_document,
     list_documents,
 )
+from app.capabilities.evaluation import record_evaluation
 from app.capabilities import (
     BOUND_CAPABILITY_CATALOG,
     approve_capability,
@@ -1064,6 +1065,88 @@ def capability_rescan(capability_id: str):
             status_code=500,
             detail=str(exc),
         )
+
+
+@app.post("/capabilities/{capability_id}/evaluate")
+def capability_evaluate(capability_id: str):
+    item = get_capability(capability_id)
+    if not item:
+        raise HTTPException(
+            status_code=404,
+            detail="Capability not found",
+        )
+
+    if item.get("scan_state") not in {"safe", "caution"}:
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                "Capability must complete the SkillSpector gate before "
+                "agent evaluation."
+            ),
+        )
+
+    # Do not feed untrusted source text or scanner excerpts into the model.
+    # The evaluation panel sees only declared metadata and deterministic scan facts.
+    evidence = [{
+        "ref": "capability-metadata",
+        "source": "BOUND capability registry",
+        "content": (
+            f"name={item.get('name')}; kind={item.get('kind')}; "
+            f"description={item.get('description') or ''}; "
+            f"provenance={item.get('provenance') or ''}; "
+            f"requested_capabilities={item.get('requested_capabilities') or []}; "
+            f"skillspector_state={item.get('scan_state')}; "
+            f"risk_score={item.get('risk_score')}; "
+            f"risk_severity={item.get('risk_severity')}; "
+            f"recommendation={item.get('recommendation')}; "
+            f"analysis_complete={item.get('analysis_complete')}"
+        ),
+    }]
+
+    task = (
+        "Evaluate whether this scanned capability belongs in BOUND Operator. "
+        "Assess operational value, overlap with existing agents, least-privilege "
+        "tool needs, maintenance burden, failure modes, and the safest integration "
+        "boundary. Preserve useful possibilities rather than rejecting novelty. "
+        "Recommend exclusion only when the capability is clearly outside BOUND's "
+        "IT operations, consulting, infrastructure, research, documentation, "
+        "automation or business-support mandate. Do not execute or install anything."
+    )
+
+    panel = run_panel(
+        task=task,
+        evidence=evidence,
+        specialist_ids=[
+            "security",
+            "reasoning",
+            "alternative_solutions",
+            "business_management",
+        ],
+        environment_id="core",
+    )
+
+    operator = panel.get("operator") or {}
+    output = operator.get("output") or {}
+    summary = str(output.get("summary") or "").strip() or None
+    confidence = output.get("confidence")
+    fit_score = None
+    if isinstance(confidence, (int, float)):
+        fit_score = max(0, min(100, round(float(confidence) * 100)))
+
+    evaluation = record_evaluation(
+        capability_id=capability_id,
+        status=operator.get("status") or "unknown",
+        evaluator_run_id=operator.get("run_id"),
+        fit_score=fit_score,
+        summary=summary,
+        result=panel,
+    )
+
+    return {
+        "ok": True,
+        "evaluation": evaluation,
+        "execution_performed": False,
+    }
 
 
 @app.post("/capabilities/{capability_id}/approve")
