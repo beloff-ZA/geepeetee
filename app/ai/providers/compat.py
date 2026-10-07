@@ -108,6 +108,19 @@ def call_openai_compatible_chat(
             prompt_details.get("cached_tokens")
         )
 
+    route_metadata = {}
+
+    if provider == "freellmapi":
+        for header, key in (
+            ("X-Routed-Via", "routed_via"),
+            ("X-Fallback-Attempts", "fallback_attempts"),
+            ("X-Fallback-Trail", "fallback_trail"),
+            ("X-Fallback-Detail", "fallback_detail"),
+        ):
+            value = response.headers.get(header)
+            if value:
+                route_metadata[key] = value
+
     return ProviderResponse(
         provider=provider,
         model=data.get("model") or model,
@@ -118,4 +131,5 @@ def call_openai_compatible_chat(
         total_tokens=total_tokens,
         cached_input_tokens=cached_input_tokens,
         raw_usage=usage,
+        metadata=route_metadata,
     )
