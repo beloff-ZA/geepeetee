@@ -1308,6 +1308,12 @@ def agent_enabled(
             detail=str(exc),
         )
 
+    except PermissionError as exc:
+        raise HTTPException(
+            status_code=403,
+            detail=str(exc),
+        )
+
     return {
         "ok": True,
         "agent_id": agent_id,
