@@ -49,6 +49,13 @@ def ensure_agent_schema() -> None:
 
     execute(
         """
+        ALTER TABLE agent_runs
+        ADD COLUMN IF NOT EXISTS route_metadata JSONB
+        """
+    )
+
+    execute(
+        """
         CREATE INDEX IF NOT EXISTS idx_agent_runs_agent_started
         ON agent_runs(agent_id, started_at DESC)
         """
