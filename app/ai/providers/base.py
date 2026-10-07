@@ -28,3 +28,4 @@ class ProviderResponse:
     total_tokens: int | None = None
     cached_input_tokens: int | None = None
     raw_usage: dict[str, Any] = field(default_factory=dict)
+    metadata: dict[str, Any] = field(default_factory=dict)
