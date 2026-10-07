@@ -9,6 +9,7 @@ from app.db.database import execute, fetch_all, fetch_one
 
 
 PROVIDER_TOKEN_FACTORS = {
+    "freellmapi": 1.00,
     "openai": 1.00,
     "gemini": 0.98,
     "groq": 1.03,
@@ -19,6 +20,7 @@ PROVIDER_TOKEN_FACTORS = {
 DEFAULT_SHADOW_RATES = {
     # Deliberately fictional comparison prices in USD per 1M tokens.
     # These are NOT vendor billing prices.
+    "freellmapi": (0.00, 0.00),
     "openai": (2.00, 8.00),
     "gemini": (1.00, 4.00),
     "groq": (0.50, 2.00),
