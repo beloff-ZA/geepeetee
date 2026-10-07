@@ -458,6 +458,7 @@ def _run_single_agent(
                 provider = %s,
                 model = %s,
                 usage_event_id = %s,
+                route_metadata = %s::jsonb,
                 finished_at = NOW(),
                 duration_ms = %s
             WHERE id = %s
@@ -468,6 +469,9 @@ def _run_single_agent(
                 routed.get("provider"),
                 routed.get("model"),
                 routed.get("usage_event_id"),
+                json.dumps(
+                    routed.get("provider_metadata") or {}
+                ),
                 duration_ms,
                 run_id,
             ),
@@ -510,6 +514,8 @@ def _run_single_agent(
                 routed.get("model"),
             "usage_event_id":
                 routed.get("usage_event_id"),
+            "provider_metadata":
+                routed.get("provider_metadata") or {},
             "output": output,
             "concerns": concerns,
         }
