@@ -47,6 +47,7 @@ from app.agents.orchestrator import (
     panel_answer_text,
     run_panel,
 )
+from app.agents.catalog import AGENTS
 from app.agents.runtime import (
     list_agents as list_bound_agents,
     open_concerns,
@@ -83,6 +84,7 @@ from app.agents.documents import (
 from app.capabilities.evaluation import record_evaluation
 from app.capabilities import (
     BOUND_CAPABILITY_CATALOG,
+    onboard_new_agent_definitions,
     approve_capability,
     capability_status,
     get_capability,
@@ -128,6 +130,11 @@ app.mount(
 
 @app.on_event("startup")
 def start_bound_background_worker():
+    # New code-defined agents are quarantined and scanned before they can be
+    # enabled. Existing bootstrap agents are not re-scanned on every start.
+    onboard_new_agent_definitions(
+        AGENTS.values()
+    )
     start_background_worker()
 
 
