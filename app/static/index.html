@@ -38,6 +38,10 @@
           <span class="status-dot" id="coreStatusDot" aria-hidden="true"></span>
           <span id="coreStatusText">Checking core</span>
         </div>
+        <div class="access-line" id="accessLine">
+          <span class="access-lock" aria-hidden="true">●</span>
+          <span id="accessStatusText">Checking identity</span>
+        </div>
         <span class="muted" id="buildMeta">BOUND Core</span>
       </div>
     </aside>
@@ -49,6 +53,14 @@
           <p id="viewSubtitle">Current workload, system state and issues needing attention.</p>
         </div>
         <div class="topbar-actions">
+          <div class="session-card" id="sessionCard" aria-live="polite">
+            <div class="session-avatar" id="sessionAvatar" aria-hidden="true">?</div>
+            <div class="session-copy">
+              <span class="session-label" id="sessionLabel">Checking access</span>
+              <strong class="session-email" id="sessionEmail">Cloudflare Access</strong>
+            </div>
+            <a class="session-signout is-hidden" id="sessionSignOut" href="/cdn-cgi/access/logout">Sign out</a>
+          </div>
           <button class="button button-secondary" id="refreshButton" type="button">Refresh</button>
           <button class="button button-primary" id="newConversationButton" type="button">New conversation</button>
         </div>
