@@ -16,7 +16,8 @@ const state = {
   inspectorPlan: null,
   capabilityStatus: null,
   capabilities: [],
-  capabilityCatalog: []
+  capabilityCatalog: [],
+  session: null
 };
 
 const viewMeta = {
@@ -129,6 +130,49 @@ function statusPill(label, kind) {
   return '<span class="state-pill is-' + escapeHtml(safeKind) + '">' +
     escapeHtml(label) +
     "</span>";
+}
+
+async function loadSession() {
+  try {
+    const session = await api("/auth/session");
+    state.session = session;
+
+    const email = session.email || "Local origin";
+    const label = session.authenticated
+      ? "Signed in with Google"
+      : "Local operator session";
+    const initial = session.email
+      ? session.email.trim().charAt(0).toUpperCase()
+      : "B";
+
+    byId("sessionAvatar").textContent = initial;
+    byId("sessionLabel").textContent = label;
+    byId("sessionEmail").textContent = email;
+
+    const signOut = byId("sessionSignOut");
+
+    if (session.logout_url) {
+      signOut.href = session.logout_url;
+      signOut.classList.remove("is-hidden");
+    } else {
+      signOut.classList.add("is-hidden");
+    }
+
+    byId("accessStatusText").textContent = session.authenticated
+      ? "Google access verified"
+      : "Local access";
+    byId("accessLine").classList.toggle(
+      "is-verified",
+      Boolean(session.authenticated)
+    );
+  } catch (error) {
+    state.session = null;
+    byId("sessionLabel").textContent = "Identity unavailable";
+    byId("sessionEmail").textContent = "Cloudflare Access";
+    byId("sessionSignOut").classList.add("is-hidden");
+    byId("accessStatusText").textContent = "Identity check failed";
+    byId("accessLine").classList.remove("is-verified");
+  }
 }
 
 async function loadHealth() {
@@ -1064,6 +1108,7 @@ async function refreshAll() {
   clearNotice();
 
   const jobs = [
+    loadSession(),
     loadHealth(),
     loadConversations(),
     loadAgents(),
