@@ -5,7 +5,7 @@ from datetime import datetime, timezone
 from typing import Any
 from app.db.database import fetch_all
 from dotenv import load_dotenv
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
@@ -324,6 +324,37 @@ def root():
         "status": "online",
         "ai_state": state["state"],
         "model": state["selected_model"],
+    }
+
+
+@app.get("/auth/session")
+def auth_session(request: Request):
+    """Expose the identity Cloudflare Access authenticated for the UI.
+
+    Cloudflare Access sits in front of the entire public hostname. The origin
+    remains bound to localhost, so this endpoint does not implement a second
+    authentication system. It only reflects the trusted Access identity header
+    when present.
+    """
+
+    email = request.headers.get(
+        "cf-access-authenticated-user-email"
+    )
+
+    return {
+        "authenticated": bool(email),
+        "email": email,
+        "identity_provider": (
+            "Google via Cloudflare Access"
+            if email
+            else "Local origin session"
+        ),
+        "access_managed": bool(email),
+        "logout_url": (
+            "/cdn-cgi/access/logout"
+            if email
+            else None
+        ),
     }
 
 
