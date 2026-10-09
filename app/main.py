@@ -346,7 +346,11 @@ class InspectorExecuteRequest(BaseModel):
 @app.get("/ui", include_in_schema=False)
 def operator_ui():
     return FileResponse(
-        STATIC_DIR / "index.html"
+        STATIC_DIR / "index.html",
+        headers={
+            "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
+            "Pragma": "no-cache",
+        },
     )
 
 
@@ -355,6 +359,10 @@ def operator_ui_styles():
     return FileResponse(
         STATIC_DIR / "styles.css",
         media_type="text/css",
+        headers={
+            "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
+            "Pragma": "no-cache",
+        },
     )
 
 
@@ -363,6 +371,10 @@ def operator_ui_script():
     return FileResponse(
         STATIC_DIR / "app.js",
         media_type="text/javascript",
+        headers={
+            "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
+            "Pragma": "no-cache",
+        },
     )
 
 
