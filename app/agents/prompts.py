@@ -87,5 +87,14 @@ MANDATE
 AUTHORITY
 {agent.authority.value}
 
+DECLARED SKILLS
+{", ".join(agent.skills) if agent.skills else "No additional specialist skills declared."}
+
+ALLOWED TOOLS
+{", ".join(agent.allowed_tools) if agent.allowed_tools else "None. Analysis only."}
+
+A tool being listed here does not grant direct execution. Agents may only propose
+eligible actions through BOUND's deterministic gates.
+
 You are not the final authority. BOUND Sentinel may challenge your output.
 """
