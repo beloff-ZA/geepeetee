@@ -18,6 +18,7 @@ def _agent(
     evidence: EvidenceRequirement = EvidenceRequirement.PREFERRED,
     persistent: bool = True,
     allowed_tools: tuple[str, ...] = (),
+    skills: tuple[str, ...] = (),
 ) -> AgentDefinition:
     return AgentDefinition(
         id=id,
@@ -30,6 +31,7 @@ def _agent(
         evidence_requirement=evidence,
         persistent=persistent,
         allowed_tools=allowed_tools,
+        skills=skills,
     )
 
 
@@ -43,6 +45,7 @@ AGENTS: dict[str, AgentDefinition] = {
         authority=AgentAuthority.PROPOSE_ACTION,
         mode=AgentMode.INTERACTIVE,
         allowed_tools=("school_edge_read",),
+        skills=("cross-system triage", "evidence synthesis", "school edge inspection orchestration"),
     ),
     "sentinel": _agent(
         id="sentinel",
@@ -62,6 +65,7 @@ AGENTS: dict[str, AgentDefinition] = {
         mandate="Map the traffic path, identify layer boundaries, compare intended versus observed state and favour read-only validation before changes.",
         authority=AgentAuthority.PROPOSE_ACTION,
         allowed_tools=("school_edge_read",),
+        skills=("CIDR discovery", "routing", "VLANs", "DHCP", "DNS", "SNMP", "SSH read profiles", "UniFi", "Grandstream GWN", "MikroTik", "firewall path analysis"),
     ),
     "identity": _agent(
         id="identity",
@@ -71,6 +75,7 @@ AGENTS: dict[str, AgentDefinition] = {
         mandate="Trace identity, policy evaluation, trust chains and permissions without weakening authentication controls.",
         authority=AgentAuthority.PROPOSE_ACTION,
         allowed_tools=("school_edge_read",),
+        skills=("Active Directory LDAP", "Windows Server", "NPS/RADIUS", "DNS", "DHCP", "WinRM read profiles", "group and account analysis"),
     ),
     "endpoint_mdm": _agent(
         id="endpoint_mdm",
@@ -80,6 +85,7 @@ AGENTS: dict[str, AgentDefinition] = {
         mandate="Separate school-owned from BYOD, identify management authority and recommend the least invasive enforceable control.",
         authority=AgentAuthority.PROPOSE_ACTION,
         allowed_tools=("school_edge_read",),
+        skills=("endpoint inventory correlation", "MDM", "Apple device management", "Windows endpoint state", "wireless client association"),
     ),
     "hardware": _agent(
         id="hardware",
@@ -96,6 +102,7 @@ AGENTS: dict[str, AgentDefinition] = {
         mandate="Trace dependencies and failure boundaries, prefer reversible changes, and specify validation and rollback.",
         authority=AgentAuthority.PROPOSE_ACTION,
         allowed_tools=("school_edge_read",),
+        skills=("service health", "HTTP APIs", "Windows services", "Linux services", "PBX integrations", "controller integrations"),
     ),
     "security": _agent(
         id="security",
@@ -113,6 +120,7 @@ AGENTS: dict[str, AgentDefinition] = {
         mandate="Separate surveillance requirements from network/storage constraints and keep privacy, retention and ownership explicit.",
         authority=AgentAuthority.PROPOSE_ACTION,
         allowed_tools=("school_edge_read",),
+        skills=("CCTV inventory", "ONVIF metadata", "NVR reachability", "retention dependencies", "camera service health", "physical access systems"),
     ),
     "alternative_solutions": _agent(
         id="alternative_solutions",
@@ -138,6 +146,7 @@ AGENTS: dict[str, AgentDefinition] = {
         mandate="Choose the safest experiment that most reduces uncertainty, then sequence work by value versus risk.",
         authority=AgentAuthority.PROPOSE_ACTION,
         allowed_tools=("school_edge_read",),
+        skills=("cross-domain diagnostics", "bounded discovery", "service reachability", "evidence-driven fault isolation"),
     ),
     "evidence": _agent(
         id="evidence",
