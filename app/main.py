@@ -350,6 +350,22 @@ def operator_ui():
     )
 
 
+@app.get("/ui/styles.css", include_in_schema=False)
+def operator_ui_styles():
+    return FileResponse(
+        STATIC_DIR / "styles.css",
+        media_type="text/css",
+    )
+
+
+@app.get("/ui/app.js", include_in_schema=False)
+def operator_ui_script():
+    return FileResponse(
+        STATIC_DIR / "app.js",
+        media_type="text/javascript",
+    )
+
+
 
 @app.get("/")
 def root():
