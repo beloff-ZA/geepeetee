@@ -327,6 +327,7 @@ def next_job(connector_id: str) -> dict | None:
         (connector_id,),
     )
 
+    lease_token = str(uuid.uuid4())
     row = fetch_one(
         """
         WITH candidate AS (
@@ -341,13 +342,13 @@ def next_job(connector_id: str) -> dict | None:
         UPDATE bound_edge_jobs AS jobs
         SET
             status = 'leased',
-            lease_token = gen_random_uuid(),
+            lease_token = %s,
             leased_at = NOW()
         FROM candidate
         WHERE jobs.id = candidate.id
         RETURNING jobs.*
         """,
-        (connector_id,),
+        (connector_id, lease_token),
     )
 
     return dict(row) if row else None
