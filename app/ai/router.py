@@ -138,6 +138,30 @@ def route_request(
             message=message,
         )
 
+        # Groq's on-demand tier can reject a request before inference when the
+        # request itself is near the account TPM ceiling. Skip predictably
+        # oversized calls instead of burning a provider attempt on HTTP 413.
+        if name == "groq":
+            groq_ceiling = int(
+                os.getenv(
+                    "BOUND_GROQ_MAX_REQUEST_TOKENS",
+                    "7000",
+                )
+            )
+            if estimated_input > groq_ceiling:
+                error_text = (
+                    f"Skipped Groq: estimated request tokens "
+                    f"{estimated_input} exceed configured ceiling {groq_ceiling}"
+                )
+                errors.append({
+                    "provider": name,
+                    "model": provider.model,
+                    "error": error_text,
+                    "status_code": None,
+                })
+                fallback_reason = error_text
+                continue
+
         started_ms = monotonic_ms()
 
         try:
