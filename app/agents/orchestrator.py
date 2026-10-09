@@ -223,30 +223,36 @@ def run_panel(
     synthesis_evidence = list(evidence)
 
     for item in specialist_runs:
+        output = item.get("output") or {}
+        compact = {
+            "status": item["status"],
+            "summary": output.get("summary"),
+            "facts": (output.get("facts") or [])[:6],
+            "unknowns": (output.get("unknowns") or [])[:6],
+            "questions": (output.get("questions") or [])[:5],
+            "recommendations": (output.get("recommendations") or [])[:6],
+            "concerns": (item.get("concerns") or [])[:6],
+        }
+        content = json.dumps(
+            compact,
+            ensure_ascii=False,
+            default=str,
+        )
         synthesis_evidence.append({
-            "ref": (
-                f"agent-run-{item['run_id']}"
-            ),
+            "ref": f"agent-run-{item['run_id']}",
             "source": item["agent_id"],
-            "content": json.dumps(
-                {
-                    "status": item["status"],
-                    "output": item.get("output"),
-                    "concerns": item.get(
-                        "concerns"
-                    ),
-                },
-                ensure_ascii=False,
-                default=str,
-            ),
+            "content": content[:4500],
         })
 
     operator_task = (
         "Synthesize the specialist panel for the original task. "
         "Preserve meaningful disagreements and uncertainty. "
-        "If missing information could change the answer, ask a short ordered "
-        "set of questions before proposing risky changes. "
-        "Prefer the safest diagnostic step that reduces uncertainty. "
+        "Do not repeat permission questions for read-only work inside the registered "
+        "environment when a typed BOUND inspection capability exists. "
+        "Do not ask the operator to paste secrets into chat. "
+        "If missing information could change the answer, ask only the smallest ordered "
+        "set of questions that actually blocks progress. "
+        "Prefer the safest typed diagnostic step that reduces uncertainty. "
         "Present alternatives when they are materially different. "
         "Do not claim any recommendation has been executed.\n\n"
         f"Original task: {task}"
