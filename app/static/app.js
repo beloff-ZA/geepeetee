@@ -36,8 +36,10 @@ const byId = (id) => document.getElementById(id);
 
 async function api(path, options = {}) {
   const response = await fetch(path, {
+    cache: "no-store",
     headers: {
       "Content-Type": "application/json",
+      "Cache-Control": "no-cache",
       ...(options.headers || {})
     },
     ...options
