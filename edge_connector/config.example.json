@@ -1,0 +1,28 @@
+{
+  "connector_id": "school-edge-01",
+  "environment_id": "school",
+  "display_name": "School Edge",
+  "poll_seconds": 5,
+  "request_timeout_seconds": 20,
+  "max_result_bytes": 524288,
+  "scopes": {
+    "internal": "192.0.2.0/24",
+    "switches": "198.51.100.0/24",
+    "cctv": "203.0.113.0/24",
+    "pbx": "10.255.255.0/24"
+  },
+  "approved_tcp_ports": [22, 53, 80, 123, 161, 389, 443, 445, 636, 1812, 1813, 3389, 5985, 5986, 8080, 8443, 8728, 8729, 5060, 5061, 5038, 554],
+  "approved_snmp_oids": [
+    "1.3.6.1.2.1.1",
+    "1.3.6.1.2.1.2",
+    "1.3.6.1.2.1.17",
+    "1.3.6.1.2.1.31"
+  ],
+  "unifi": {
+    "site": "default"
+  },
+  "grandstream": {
+    "devices_path": "",
+    "clients_path": ""
+  }
+}
