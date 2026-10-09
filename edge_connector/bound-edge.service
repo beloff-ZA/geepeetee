@@ -1,0 +1,25 @@
+[Unit]
+Description=BOUND School Edge Connector
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=bound-edge
+Group=bound-edge
+WorkingDirectory=/opt/bound-edge
+EnvironmentFile=/etc/bound-edge.env
+ExecStart=/opt/bound-edge/venv/bin/python /opt/bound-edge/bound_edge.py
+Restart=always
+RestartSec=5
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/bound-edge
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+
+[Install]
+WantedBy=multi-user.target

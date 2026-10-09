@@ -17,6 +17,8 @@ def _agent(
     mode: AgentMode = AgentMode.ON_DEMAND,
     evidence: EvidenceRequirement = EvidenceRequirement.PREFERRED,
     persistent: bool = True,
+    allowed_tools: tuple[str, ...] = (),
+    skills: tuple[str, ...] = (),
 ) -> AgentDefinition:
     return AgentDefinition(
         id=id,
@@ -28,6 +30,8 @@ def _agent(
         mode=mode,
         evidence_requirement=evidence,
         persistent=persistent,
+        allowed_tools=allowed_tools,
+        skills=skills,
     )
 
 
@@ -40,6 +44,8 @@ AGENTS: dict[str, AgentDefinition] = {
         mandate="Synthesize findings, preserve disagreements, surface questions, minimise blast radius and propose the next safe step.",
         authority=AgentAuthority.PROPOSE_ACTION,
         mode=AgentMode.INTERACTIVE,
+        allowed_tools=("school_edge_read",),
+        skills=("cross-system triage", "evidence synthesis", "school edge inspection orchestration"),
     ),
     "sentinel": _agent(
         id="sentinel",
@@ -58,6 +64,8 @@ AGENTS: dict[str, AgentDefinition] = {
         persona="A packet-minded network engineer who trusts captures, tables and topology more than folklore.",
         mandate="Map the traffic path, identify layer boundaries, compare intended versus observed state and favour read-only validation before changes.",
         authority=AgentAuthority.PROPOSE_ACTION,
+        allowed_tools=("school_edge_read",),
+        skills=("CIDR discovery", "routing", "VLANs", "DHCP", "DNS", "SNMP", "SSH read profiles", "UniFi", "Grandstream GWN", "MikroTik", "firewall path analysis"),
     ),
     "identity": _agent(
         id="identity",
@@ -66,6 +74,8 @@ AGENTS: dict[str, AgentDefinition] = {
         persona="An identity administrator who thinks every access problem is either policy, trust, scope or somebody naming a group badly.",
         mandate="Trace identity, policy evaluation, trust chains and permissions without weakening authentication controls.",
         authority=AgentAuthority.PROPOSE_ACTION,
+        allowed_tools=("school_edge_read",),
+        skills=("Active Directory LDAP", "Windows Server", "NPS/RADIUS", "DNS", "DHCP", "WinRM read profiles", "group and account analysis"),
     ),
     "endpoint_mdm": _agent(
         id="endpoint_mdm",
@@ -74,6 +84,8 @@ AGENTS: dict[str, AgentDefinition] = {
         persona="A device-fleet wrangler who wants ownership, enrollment state and policy applicability before touching anything.",
         mandate="Separate school-owned from BYOD, identify management authority and recommend the least invasive enforceable control.",
         authority=AgentAuthority.PROPOSE_ACTION,
+        allowed_tools=("school_edge_read",),
+        skills=("endpoint inventory correlation", "MDM", "Apple device management", "Windows endpoint state", "wireless client association"),
     ),
     "hardware": _agent(
         id="hardware",
@@ -89,6 +101,8 @@ AGENTS: dict[str, AgentDefinition] = {
         persona="A pedantic senior engineer who wants versions, logs and exact reproduction steps before believing folklore.",
         mandate="Trace dependencies and failure boundaries, prefer reversible changes, and specify validation and rollback.",
         authority=AgentAuthority.PROPOSE_ACTION,
+        allowed_tools=("school_edge_read",),
+        skills=("service health", "HTTP APIs", "Windows services", "Linux services", "PBX integrations", "controller integrations"),
     ),
     "security": _agent(
         id="security",
@@ -105,6 +119,8 @@ AGENTS: dict[str, AgentDefinition] = {
         persona="A physical-systems engineer who measures channels, bandwidth, retention and failure domains before discussing shiny replacements.",
         mandate="Separate surveillance requirements from network/storage constraints and keep privacy, retention and ownership explicit.",
         authority=AgentAuthority.PROPOSE_ACTION,
+        allowed_tools=("school_edge_read",),
+        skills=("CCTV inventory", "ONVIF metadata", "NVR reachability", "retention dependencies", "camera service health", "physical access systems"),
     ),
     "alternative_solutions": _agent(
         id="alternative_solutions",
@@ -129,6 +145,8 @@ AGENTS: dict[str, AgentDefinition] = {
         persona="A pragmatic field engineer allergic to elegant plans that fail when a real cable is involved.",
         mandate="Choose the safest experiment that most reduces uncertainty, then sequence work by value versus risk.",
         authority=AgentAuthority.PROPOSE_ACTION,
+        allowed_tools=("school_edge_read",),
+        skills=("cross-domain diagnostics", "bounded discovery", "service reachability", "evidence-driven fault isolation"),
     ),
     "evidence": _agent(
         id="evidence",

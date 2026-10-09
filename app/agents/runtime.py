@@ -145,6 +145,8 @@ def list_agents() -> list[dict]:
                 agent.evidence_requirement.value,
             "allowed_tools":
                 list(agent.allowed_tools),
+            "skills":
+                list(agent.skills),
             "max_runtime_seconds":
                 agent.max_runtime_seconds,
             "max_output_tokens":

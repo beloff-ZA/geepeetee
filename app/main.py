@@ -93,6 +93,17 @@ from app.capabilities import (
     register_capability,
     rescan_capability,
 )
+from app.connectors import (
+    EDGE_CAPABILITIES,
+    authenticate_edge,
+    connector_status,
+    ensure_edge_schema,
+    get_job as get_edge_job,
+    next_job as next_edge_job,
+    queue_job as queue_edge_job,
+    record_heartbeat as record_edge_heartbeat,
+    submit_result as submit_edge_result,
+)
 from app.inspection.network_inspector import (
     confirm_plan as confirm_inspection_plan,
     execute_plan as execute_inspection_plan,
@@ -135,6 +146,7 @@ def start_bound_background_worker():
     onboard_new_agent_definitions(
         AGENTS.values()
     )
+    ensure_edge_schema()
     start_background_worker()
 
 
@@ -267,6 +279,31 @@ class AgentHandoverRequest(BaseModel):
     source_agent_id: str
     target_agent_id: str
     knowledge_ids: list[str]
+
+
+class EdgeHeartbeatRequest(BaseModel):
+    connector_id: str = Field(min_length=1, max_length=120)
+    environment_id: str = Field(default="school", min_length=1, max_length=120)
+    display_name: str = Field(default="School Edge", min_length=1, max_length=200)
+    version: str | None = Field(default=None, max_length=80)
+    capabilities: list[str] = Field(default_factory=list)
+
+
+class EdgeResultRequest(BaseModel):
+    connector_id: str = Field(min_length=1, max_length=120)
+    lease_token: str = Field(min_length=1, max_length=120)
+    ok: bool
+    result: Any = None
+    error: str | None = Field(default=None, max_length=4000)
+    observed_at: str | None = None
+
+
+class EdgeQueueRequest(BaseModel):
+    connector_id: str = Field(default="school-edge-01", min_length=1, max_length=120)
+    capability: str = Field(min_length=1, max_length=120)
+    target: str | None = Field(default=None, max_length=255)
+    parameters: dict[str, Any] = Field(default_factory=dict)
+    requested_by: str = Field(default="operator", min_length=1, max_length=120)
 
 
 class InspectorPreviewRequest(BaseModel):
@@ -1426,6 +1463,118 @@ def agent_action_proposal(
             status_code=500,
             detail=str(exc),
         )
+
+
+# ============================================================
+# SCHOOL EDGE CONNECTOR
+# ============================================================
+
+def _edge_bearer_token(request: Request) -> str | None:
+    value = request.headers.get("authorization", "")
+    if not value.lower().startswith("bearer "):
+        return None
+    return value.split(" ", 1)[1].strip()
+
+
+def _require_edge(request: Request) -> None:
+    if not authenticate_edge(_edge_bearer_token(request)):
+        raise HTTPException(
+            status_code=401,
+            detail="Invalid school edge connector token",
+        )
+
+
+@app.get("/connectors/capabilities")
+def edge_capabilities():
+    return {
+        "count": len(EDGE_CAPABILITIES),
+        "capabilities": EDGE_CAPABILITIES,
+    }
+
+
+@app.get("/connectors")
+def edge_connectors():
+    return {
+        "count": len(connector_status()),
+        "connectors": connector_status(),
+    }
+
+
+@app.post("/connectors/jobs")
+def edge_queue_job(request: EdgeQueueRequest):
+    try:
+        job = queue_edge_job(
+            connector_id=request.connector_id,
+            environment_id="school",
+            capability=request.capability,
+            target=request.target,
+            parameters=request.parameters,
+            requested_by=request.requested_by,
+        )
+        return {
+            "ok": True,
+            "job": job,
+            "execution_performed": False,
+        }
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+
+@app.get("/connectors/jobs/{job_id}")
+def edge_job_detail(job_id: str):
+    job = get_edge_job(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Edge job not found")
+    return {"job": job}
+
+
+@app.post("/edge/v1/heartbeat")
+def edge_heartbeat(request_body: EdgeHeartbeatRequest, request: Request):
+    _require_edge(request)
+    return {
+        "ok": True,
+        "connector": record_edge_heartbeat(
+            connector_id=request_body.connector_id,
+            environment_id=request_body.environment_id,
+            display_name=request_body.display_name,
+            version=request_body.version,
+            capabilities=request_body.capabilities,
+            remote_addr=(request.client.host if request.client else None),
+        ),
+        "server_capabilities": list(EDGE_CAPABILITIES),
+    }
+
+
+@app.get("/edge/v1/jobs/next")
+def edge_next_job(connector_id: str, request: Request):
+    _require_edge(request)
+    return {
+        "job": next_edge_job(connector_id),
+    }
+
+
+@app.post("/edge/v1/jobs/{job_id}/result")
+def edge_job_result(
+    job_id: str,
+    request_body: EdgeResultRequest,
+    request: Request,
+):
+    _require_edge(request)
+    try:
+        job = submit_edge_result(
+            job_id=job_id,
+            connector_id=request_body.connector_id,
+            lease_token=request_body.lease_token,
+            ok=request_body.ok,
+            result=request_body.result,
+            error=request_body.error,
+            observed_at=request_body.observed_at,
+        )
+        return {"ok": True, "job": job}
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc))
 
 
 # ============================================================

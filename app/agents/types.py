@@ -32,6 +32,7 @@ class AgentDefinition:
     mode: AgentMode = AgentMode.ON_DEMAND
     evidence_requirement: EvidenceRequirement = EvidenceRequirement.PREFERRED
     allowed_tools: tuple[str, ...] = field(default_factory=tuple)
+    skills: tuple[str, ...] = field(default_factory=tuple)
     max_runtime_seconds: int = 90
     max_output_tokens: int = 4000
     enabled: bool = True

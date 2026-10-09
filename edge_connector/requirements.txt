@@ -1,0 +1,5 @@
+requests>=2.32,<3
+ldap3>=2.9,<3
+paramiko>=3.5,<4
+pywinrm>=0.5,<1
+onvif-zeep>=0.2.12,<1
