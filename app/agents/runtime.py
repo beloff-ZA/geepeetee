@@ -419,9 +419,33 @@ def _run_single_agent(
             ),
         )
 
-        output = extract_json_object(
-            routed["text"]
-        )
+        try:
+            output = extract_json_object(
+                routed["text"]
+            )
+        except ValueError:
+            # One bounded repair attempt prevents a specialist from failing the
+            # whole panel merely because a provider wrapped otherwise useful
+            # content in prose or malformed JSON.
+            repair = route_request(
+                message=(
+                    "Repair the following specialist response into ONLY valid JSON "
+                    "matching the required schema. Preserve its meaning, do not add "
+                    "new facts, and do not include markdown fences.\n\n"
+                    + routed["text"][:8000]
+                ),
+                conversation_context=None,
+                conversation_id=conversation_id,
+                openai_model=model,
+                allow_openai=allow_openai,
+                system_prompt=build_agent_prompt(
+                    agent
+                ),
+            )
+            output = extract_json_object(
+                repair["text"]
+            )
+            routed = repair
 
         concerns = deterministic_concerns(
             output=output,
